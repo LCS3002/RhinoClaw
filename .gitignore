@@ -15,6 +15,11 @@ dist-ssr
 rhinoclaw/rhino_plugin/bin/
 rhinoclaw/rhino_plugin/obj/
 rhinoclaw/*.rhp
+penguinclaw/rhino_plugin/bin/
+penguinclaw/rhino_plugin/obj/
+penguinclaw/PenguinClaw.Tests/bin/
+penguinclaw/PenguinClaw.Tests/obj/
+*.rhp
 
 # Secrets
 .env
