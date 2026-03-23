@@ -12,9 +12,6 @@ dist-ssr
 *.local
 
 # Build outputs
-rhinoclaw/rhino_plugin/bin/
-rhinoclaw/rhino_plugin/obj/
-rhinoclaw/*.rhp
 penguinclaw/rhino_plugin/bin/
 penguinclaw/rhino_plugin/obj/
 penguinclaw/PenguinClaw.Tests/bin/
@@ -42,11 +39,7 @@ Thumbs.db
 # Claude Code session data
 .claude/
 
-# Rhino render/export output
-rhinoclaw/project/
-
 # Local docs / scratch files
 *.docx
 *.pptx
-RhinoClaw_PRD.docx
 ARCHITECTURE.md

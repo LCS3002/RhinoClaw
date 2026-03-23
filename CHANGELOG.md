@@ -9,6 +9,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.2.0] — 2026-03-23
+
+### Added
+
+#### Vision Loop
+- `capture_and_assess(prompt)` tool: captures the active viewport as a base64-encoded PNG, injects it as an Anthropic image block into the next LLM turn, and returns the model's visual assessment. Enables self-verification after modeling steps.
+- Vision thumbnails in the React UI: when `capture_and_assess` runs, the captured image is shown inline in the chat bubble alongside the model's text response.
+
+#### Stop Button & Cancellation
+- Red **■ Stop** button in the chat UI replaces the send button while a request is in progress.
+- `POST /stop` server route cancels the active agent loop via `CancellationToken`.
+- `CancellationToken` propagated from the HTTP request through `PenguinClawAgent.Run()` and into every `InvokeOnUiThread` dispatch.
+
+#### Error Hardening
+- `RetryPolicy`: exponential backoff (1s / 2s / 4s) on HTTP 429 and 5xx responses, max 3 retries, for both Anthropic and OpenAI-compatible providers.
+- `ValidateToolCall()`: checks required parameters against the tool schema before dispatch; returns structured validation errors back to the model rather than throwing.
+- Malformed tool call recovery: up to 2 retries per turn when `stop_reason == tool_use` but no tool calls are parsed; sends the raw response back to the model with an error prompt.
+- Outer try/catch in `PenguinClawTools.Execute()` returns structured JSON including `tool`, `error`, and `suggestion` fields so the agent can self-correct.
+- Action log entries for retry events (`RecordRetry`, `RecordRetryFailure`, `RecordMalformedCall`).
+
+#### Token Usage & Cost Tracking
+- `AgentResult` extended with `InputTokens`, `OutputTokens`, `CachedTokens` fields.
+- `/chat` response JSON now includes token counts.
+- Turn/cost counter displayed below the chat input in the React UI.
+
+#### Provider Status Indicator
+- Live green/red dot in the Settings tab pings the configured provider every 30 seconds and updates without requiring a test message.
+
+#### Grasshopper Additions
+- `solve_gh_definition` tool: triggers a new Grasshopper solution on the active canvas.
+- `bake_gh_definition` tool: bakes all output geometry from the active GH canvas into the Rhino document.
+- `build_gh_definition` extended with `python3` component type (creates a `GH_ScriptComponent` via reflection) and `sdk` type (GUID-based component lookup).
+
+#### Test Suite
+- xUnit test project (`PenguinClaw.Tests`, `net8.0`) — runs without Rhino installed.
+- 86 tests across four files: `ProviderTests.cs` (37), `SchemaValidationTests.cs` (15), `AgentLoopTests.cs` (20), `KeywordMatcherTests.cs` (22). All pass on Ubuntu CI.
+- `OverrideDispatcher` delegate in `PenguinClawTools` for mocking tool dispatch in tests.
+
+#### CI
+- GitHub Actions workflow (`.github/workflows/ci.yml`): three jobs — plugin build on `windows-latest` (.NET 4.8), tests on `ubuntu-latest` (net8.0), React UI lint/build on `ubuntu-latest`.
+
+#### Mac Support
+- Windows-only `GotFocus` / WebView2 focus-recovery code in `PenguinClawPanel.cs` wrapped in `#if !__MACOS__` guards.
+- OpenAI-compatible provider message builder handles `image` content blocks in OpenAI `image_url` data-URI format for vision on non-Anthropic providers.
+
+---
+
 ## [0.1.0] — 2026-03-21
 
 First public release.
@@ -82,5 +129,6 @@ First public release.
 
 ---
 
-[Unreleased]: https://github.com/LCS3002/PenguinClaw/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/LCS3002/PenguinClaw/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/LCS3002/PenguinClaw/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/LCS3002/PenguinClaw/releases/tag/v0.1.0
