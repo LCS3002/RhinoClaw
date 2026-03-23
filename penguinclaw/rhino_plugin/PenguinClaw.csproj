@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>PenguinClaw</RootNamespace>
+    <AssemblyName>PenguinClaw</AssemblyName>
+    <OutputType>Library</OutputType>
+    <PackageId>PenguinClaw</PackageId>
+    <Version>0.1.0</Version>
+    <Description>PenguinClaw — AI agent panel for Rhino 8</Description>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="RhinoCommon" Version="8.0.0" />
+    <PackageReference Include="Eto.Forms" Version="2.7.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="www\**\*" />
+  </ItemGroup>
+</Project>

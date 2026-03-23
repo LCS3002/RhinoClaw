@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+dist-ssr
+*.local
+
+# Build outputs
+rhinoclaw/rhino_plugin/bin/
+rhinoclaw/rhino_plugin/obj/
+rhinoclaw/*.rhp
+
+# Secrets
+.env
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+.idea/
+
+# Logs
+*.log
+
+# Claude Code session data
+.claude/
+
+# Rhino render/export output
+rhinoclaw/project/
+
+# Local docs / scratch files
+*.docx
+*.pptx
+RhinoClaw_PRD.docx
+ARCHITECTURE.md

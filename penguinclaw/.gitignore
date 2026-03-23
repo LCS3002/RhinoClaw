@@ -1,0 +1,42 @@
+# Build outputs
+rhino_plugin/bin/
+rhino_plugin/obj/
+
+# Node
+my-app/node_modules/
+my-app/dist/
+ui/node_modules/
+ui/dist/
+
+# Compiled plugin binary
+*.rhp
+
+# Python
+agent/__pycache__/
+agent/*.pyc
+agent/.env
+agent/.venv/
+*.pyc
+__pycache__/
+.venv/
+
+# Secrets
+.env
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Rider
+.idea/
+
+# Temp
+*.tmp
+*.log
