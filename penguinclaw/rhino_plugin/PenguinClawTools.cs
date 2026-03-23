@@ -873,6 +873,11 @@ case "list_gh_sliders":      return ListGhSliders();
                 var doc = RhinoDoc.ActiveDoc;
                 if (doc == null) return new JObject { ["success"] = false, ["message"] = "No active Rhino document." };
 
+                // Snapshot existing IDs before the command so we can detect new objects reliably
+                // (selection state after a command is unreliable — appended _Enter deselects)
+                var beforeIds = new HashSet<Guid>(
+                    doc.Objects.Where(o => !o.IsDeleted).Select(o => o.Id));
+
                 bool ok = RhinoApp.RunScript(command, echo);
                 doc.Views.Redraw();
 
@@ -883,16 +888,22 @@ case "list_gh_sliders":      return ListGhSliders();
                     ["command"] = command,
                 };
 
-                // Return currently selected objects so Claude knows what was just created/modified
-                var selected = doc.Objects.GetSelectedObjects(false, false).ToList();
-                if (selected.Count > 0)
+                // Prefer newly created objects; fall back to current selection
+                var newObjs = doc.Objects
+                    .Where(o => !o.IsDeleted && !beforeIds.Contains(o.Id))
+                    .ToList();
+                var toReport = newObjs.Count > 0
+                    ? newObjs
+                    : doc.Objects.GetSelectedObjects(false, false).ToList();
+
+                if (toReport.Count > 0)
                 {
                     var arr = new JArray();
-                    foreach (var obj in selected)
+                    foreach (var obj in toReport)
                         arr.Add(new JObject
                         {
-                            ["id"]   = obj.Id.ToString(),
-                            ["type"] = obj.Geometry?.GetType().Name ?? "unknown",
+                            ["id"]    = obj.Id.ToString(),
+                            ["type"]  = obj.Geometry?.GetType().Name ?? "unknown",
                             ["layer"] = doc.Layers[obj.Attributes.LayerIndex].Name,
                         });
                     result["selected_objects"] = arr;
@@ -1040,6 +1051,9 @@ case "list_gh_sliders":      return ListGhSliders();
                 catch (Exception ex) { return new JObject { ["success"] = false, ["message"] = $"Python engine unavailable: {ex.Message}" }; }
                 if (py == null) return new JObject { ["success"] = false, ["message"] = "Python engine returned null." };
 
+                // Normalise line endings — CRLF from JSON causes SyntaxError in the Python parser
+                code = code.Replace("\r\n", "\n").Replace("\r", "\n");
+
                 var output = new StringBuilder();
                 py.Output = s => output.Append(s);
                 py.SetVariable("doc", doc);
@@ -1049,6 +1063,18 @@ case "list_gh_sliders":      return ListGhSliders();
                 try
                 {
                     ok = py.ExecuteScript(code);
+                    if (!ok)
+                    {
+                        // PythonScript stores errors in properties, not exceptions
+                        try
+                        {
+                            var t = py.GetType();
+                            var em = t.GetProperty("ErrorMessage")?.GetValue(py)?.ToString();
+                            var et = t.GetProperty("ErrorType")?.GetValue(py)?.ToString();
+                            errorMsg = string.IsNullOrEmpty(em) ? et : (string.IsNullOrEmpty(et) ? em : $"{et}: {em}");
+                        }
+                        catch { errorMsg = "execution failed"; }
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1058,14 +1084,9 @@ case "list_gh_sliders":      return ListGhSliders();
 
                 doc.Views.Redraw();
 
-                var result = Obj(
-                    "executed", ok,
-                    "output",   output.ToString().TrimEnd()
-                );
-                if (!string.IsNullOrEmpty(errorMsg))
-                    result["error"] = errorMsg;
-                if (!ok)
-                    result["success"] = false;
+                var result = Obj("executed", ok, "output", output.ToString().TrimEnd());
+                if (!string.IsNullOrEmpty(errorMsg)) result["error"] = errorMsg;
+                if (!ok) result["success"] = false;
                 return result;
             });
         }
@@ -1703,7 +1724,9 @@ case "list_gh_sliders":      return ListGhSliders();
             if (err    != null) return new JObject { ["success"] = false, ["message"] = err.Message }.ToString(Formatting.None);
             if (result == null) return new JObject { ["success"] = false, ["message"] = "Operation timed out." }.ToString(Formatting.None);
 
-            result["success"] = true;
+            // Only set success=true if the action did not already set it to false explicitly
+            if (result["success"] == null)
+                result["success"] = true;
             return result.ToString(Formatting.None);
         }
 
