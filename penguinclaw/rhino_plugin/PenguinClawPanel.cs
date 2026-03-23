@@ -26,10 +26,10 @@ namespace PenguinClaw
             }
             Content = _webView;
 
-            // WebView2 drops its rendering context when focus or visibility changes.
-            // Two hooks cover all cases:
-            //   1. GotFocus on the main window  — handles alt-tab back from another app
-            //   2. PanelShown (below)           — handles switching between Rhino panel tabs
+            // WebView2 on Windows drops its rendering context on focus/visibility changes.
+            // The GotFocus hook is Windows-only; on macOS the Eto WebView handles this natively.
+            // PanelShown (below) covers tab-switching on all platforms.
+#if !__MACOS__
             try
             {
                 var mainWindow = RhinoEtoApp.MainWindow;
@@ -37,6 +37,7 @@ namespace PenguinClaw
                     mainWindow.GotFocus += OnMainWindowGotFocus;
             }
             catch { }
+#endif
         }
 
         private void OnMainWindowGotFocus(object sender, EventArgs e)
@@ -79,6 +80,7 @@ namespace PenguinClaw
 
         public void PanelClosing(uint documentSerialNumber, bool onCloseDocument)
         {
+#if !__MACOS__
             try
             {
                 var mainWindow = RhinoEtoApp.MainWindow;
@@ -86,6 +88,7 @@ namespace PenguinClaw
                     mainWindow.GotFocus -= OnMainWindowGotFocus;
             }
             catch { }
+#endif
             try { PenguinClawServer.StopServer(); } catch { }
         }
     }

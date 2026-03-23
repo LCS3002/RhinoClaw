@@ -4,8 +4,9 @@
 
 **The AI plugin for Rhinoceros that actually builds things.**
 
+[![CI](https://github.com/LCS3002/PenguinClaw/actions/workflows/ci.yml/badge.svg)](https://github.com/LCS3002/PenguinClaw/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Rhino%208%20%E2%80%A2%20Windows-blue)](https://www.rhino3d.com/)
+[![Platform](https://img.shields.io/badge/platform-Rhino%208%20%E2%80%A2%20Windows%20%2B%20Mac-blue)](https://www.rhino3d.com/)
 [![Providers](https://img.shields.io/badge/AI-Anthropic%20%7C%20Groq%20%7C%20Ollama-blueviolet)](#choosing-a-provider)
 
 <br/>
@@ -30,9 +31,10 @@ No scripting. No macros. Just natural language.
 ```
 Rhino 8 (C# plugin)
 ├── Embedded HTTP server      — React UI at localhost:8080
-├── AI agent loop             — ReAct loop via provider API
+├── AI agent loop             — ReAct loop via provider API (with retry + cancellation)
 ├── RhinoCommon tool layer    — run_rhino_command passthrough (980+ commands)
-└── GH component registry     — auto-indexed, keyword-matched top-5 per turn
+├── GH component registry     — auto-indexed, keyword-matched top-5 per turn
+└── Vision layer              — capture_and_assess injects viewport images into model context
 ```
 
 **Agent loop** — each message runs a ReAct loop: the AI receives the user message + tool definitions, returns a tool call or a final answer, tools execute on the Rhino UI thread, results feed back into the next turn. Continues until the model returns `end_turn` or after 25 iterations.
@@ -52,13 +54,14 @@ See [AGENTS.md](AGENTS.md) for a full technical reference.
 | | |
 |---|---|
 | 🤖 **Full Rhino access** | Any built-in command via natural language (`_Box`, `_Loft`, `_FilletEdge`, …) |
-| 🌿 **Grasshopper integration** | List/set sliders, enumerate canvas components, build definitions programmatically with `build_gh_definition` |
+| 🌿 **Grasshopper integration** | List/set sliders, enumerate canvas components, build definitions programmatically with `build_gh_definition` (slider, panel, toggle, component, python3, sdk types); `solve_gh_definition`; `bake_gh_definition` |
 | 📐 **Geometry inspection** | Selected objects, volumes, bounding boxes, layer info, full document summary |
 | 🧠 **Object-aware follow-ups** | Object IDs tracked after every operation — "scale it", "move that", "delete the sphere" all resolve correctly |
 | 📏 **Direct transforms** | `move_object`, `scale_object`, `rotate_object`, `mirror_object`, `array_linear`, `array_polar` |
 | 🔗 **Boolean operations** | `boolean_union`, `boolean_difference`, `boolean_intersection`, `join_curves` |
 | 🐍 **Python execution** | `execute_python_code` — full RhinoCommon + rhinoscriptsyntax access for bulk operations |
 | 📸 **Viewport capture** | Captures the active Rhino viewport at its actual resolution |
+| 👁 **Vision loop** | `capture_and_assess` injects a live viewport screenshot into the AI context for visual verification after modeling steps |
 | 💬 **Persistent history** | Chat history and action log survive panel reloads and Rhino restarts |
 | 🔍 **Dynamic GH registry** | Rebuilt on startup and after `PenguinClawScan`; picks up third-party plugins automatically |
 
@@ -66,7 +69,7 @@ See [AGENTS.md](AGENTS.md) for a full technical reference.
 
 ## Requirements
 
-- **Rhino 8** for Windows (RhinoCommon `.NET 4.8`)
+- **Rhino 8** for Windows or Mac (RhinoCommon `.NET 4.8`)
 - **An AI provider** — choose one from the table below (configured inside the plugin)
 
 ---
@@ -117,7 +120,7 @@ For complex multi-step tasks (Grasshopper definition building, boolean chains), 
 
 ### Prerequisites
 
-- [.NET 4.8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48)
+- [.NET 4.8 SDK](https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48) (Windows) or [.NET 8 SDK](https://dotnet.microsoft.com/download) (Mac builds use Mono)
 - [Node.js 18+](https://nodejs.org/)
 - Rhino 8 installed (provides the RhinoCommon reference)
 
@@ -150,17 +153,22 @@ dotnet build PenguinClaw.csproj -c Release
 penguinclaw/
 ├── rhino_plugin/
 │   ├── PenguinClawPlugin.cs         # Plugin entry point, panel registration
-│   ├── PenguinClawPanel.cs          # Eto dockable panel + WebView host
-│   ├── PenguinClawServer.cs         # Embedded HTTP server (port 8080)
-│   ├── PenguinClawAgent.cs          # ReAct loop, config, provider selection
-│   ├── LlmProviders.cs              # ILlmProvider + Anthropic / Groq / Ollama
-│   ├── PenguinClawTools.cs          # 32 core tool implementations
+│   ├── PenguinClawPanel.cs          # Eto dockable panel + WebView host (Win+Mac)
+│   ├── PenguinClawServer.cs         # Embedded HTTP server (port 8080) + /stop
+│   ├── PenguinClawAgent.cs          # ReAct loop, cancellation, schema validation
+│   ├── LlmProviders.cs              # ILlmProvider + Anthropic / Groq / Ollama + retry
+│   ├── PenguinClawTools.cs          # 35 core tools including vision + GH bake/solve
 │   ├── RhinoCommandRegistry.cs      # GH component index + keyword matcher
-│   ├── PenguinClawActionLog.cs      # Persistent action log
+│   ├── PenguinClawActionLog.cs      # Persistent action log + retry/recovery events
 │   ├── PenguinClawScanCommand.cs    # PenguinClawScan — deep GH component index
 │   └── www/                         # Embedded React build
+├── PenguinClaw.Tests/               # xUnit test project (net8.0, no Rhino needed)
+│   ├── ProviderTests.cs             # 37 tests for LLM providers, retry, factory
+│   ├── SchemaValidationTests.cs     # 15 tests for tool schema validation
+│   ├── AgentLoopTests.cs            # 20 tests for history trim, result structure
+│   └── KeywordMatcherTests.cs       # 22 tests for tokenizer and scoring logic
 └── ui/
-    └── App.jsx                      # React chat UI — chat, tools, settings tabs
+    └── App.jsx                      # React chat UI — stop button, vision, cost counter
 ```
 
 ---
