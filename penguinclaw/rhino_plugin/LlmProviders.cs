@@ -76,60 +76,57 @@ namespace PenguinClaw
                 ["messages"]   = messages,
             };
 
-            string rawResp;
-            System.Net.HttpStatusCode status;
-            try
-            {
-                var req = new HttpRequestMessage(HttpMethod.Post, ApiUrl)
+            var llmResp = RetryPolicy.SendWithRetry(
+                () =>
                 {
-                    Content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json"),
-                };
-                req.Headers.Add("x-api-key", _apiKey);
-                req.Headers.Add("anthropic-version", "2023-06-01");
-                req.Headers.Add("anthropic-beta", "prompt-caching-2024-07-31");
-
-                var resp = Http.SendAsync(req).GetAwaiter().GetResult();
-                status  = resp.StatusCode;
-                rawResp = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                return ProviderHelpers.Err($"Connection error: {ex.Message}");
-            }
-
-            if ((int)status >= 400)
-                return ProviderHelpers.Err(ProviderHelpers.FriendlyApiError("Anthropic", (int)status, rawResp));
-
-            JObject parsed;
-            try { parsed = JObject.Parse(rawResp); }
-            catch { return ProviderHelpers.Err($"Unexpected API response: {rawResp}"); }
-
-            var stopReason = parsed["stop_reason"]?.ToString();
-            var content    = (parsed["content"] as JArray) ?? new JArray();
-
-            var sb    = new StringBuilder();
-            var calls = new List<LlmToolCall>();
-
-            foreach (var block in content)
-            {
-                var type = block["type"]?.ToString();
-                if (type == "text")
-                    sb.Append(block["text"]?.ToString() ?? "");
-                else if (type == "tool_use")
-                    calls.Add(new LlmToolCall
+                    var req = new HttpRequestMessage(HttpMethod.Post, ApiUrl)
                     {
-                        Id    = block["id"]?.ToString()    ?? "",
-                        Name  = block["name"]?.ToString()  ?? "",
-                        Input = (block["input"] as JObject) ?? new JObject(),
-                    });
-            }
+                        Content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json"),
+                    };
+                    req.Headers.Add("x-api-key", _apiKey);
+                    req.Headers.Add("anthropic-version", "2023-06-01");
+                    req.Headers.Add("anthropic-beta", "prompt-caching-2024-07-31");
+                    var resp = Http.SendAsync(req).GetAwaiter().GetResult();
+                    return (resp.StatusCode, resp.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+                },
+                (status, rawResp) =>
+                {
+                    if ((int)status >= 400)
+                        return ProviderHelpers.Err(ProviderHelpers.FriendlyApiError("Anthropic", (int)status, rawResp));
 
-            return new LlmResponse
-            {
-                StopReason = stopReason == "tool_use" ? "tool_use" : "end_turn",
-                Text       = sb.ToString().Trim(),
-                ToolCalls  = calls,
-            };
+                    JObject parsed;
+                    try { parsed = JObject.Parse(rawResp); }
+                    catch { return ProviderHelpers.Err($"Unexpected API response: {rawResp}"); }
+
+                    var stopReason = parsed["stop_reason"]?.ToString();
+                    var content    = (parsed["content"] as JArray) ?? new JArray();
+
+                    var sb    = new StringBuilder();
+                    var calls = new List<LlmToolCall>();
+
+                    foreach (var block in content)
+                    {
+                        var type = block["type"]?.ToString();
+                        if (type == "text")
+                            sb.Append(block["text"]?.ToString() ?? "");
+                        else if (type == "tool_use")
+                            calls.Add(new LlmToolCall
+                            {
+                                Id    = block["id"]?.ToString()     ?? "",
+                                Name  = block["name"]?.ToString()   ?? "",
+                                Input = (block["input"] as JObject) ?? new JObject(),
+                            });
+                    }
+
+                    return new LlmResponse
+                    {
+                        StopReason = stopReason == "tool_use" ? "tool_use" : "end_turn",
+                        Text       = sb.ToString().Trim(),
+                        ToolCalls  = calls,
+                    };
+                },
+                "Anthropic");
+            return llmResp;
         }
     }
 
@@ -167,71 +164,68 @@ namespace PenguinClaw
                 body["tool_choice"] = "auto";
             }
 
-            string rawResp;
-            System.Net.HttpStatusCode status;
-            try
-            {
-                var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions")
+            var llmResp = RetryPolicy.SendWithRetry(
+                () =>
                 {
-                    Content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json"),
-                };
-                if (!string.IsNullOrWhiteSpace(_apiKey))
-                    req.Headers.Add("Authorization", $"Bearer {_apiKey}");
-
-                var resp = Http.SendAsync(req).GetAwaiter().GetResult();
-                status  = resp.StatusCode;
-                rawResp = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                return ProviderHelpers.Err($"Connection error: {ex.Message}");
-            }
-
-            if ((int)status >= 400)
-                return ProviderHelpers.Err(ProviderHelpers.FriendlyApiError("AI provider", (int)status, rawResp));
-
-            JObject parsed;
-            try { parsed = JObject.Parse(rawResp); }
-            catch { return ProviderHelpers.Err($"Unexpected API response: {rawResp}"); }
-
-            var choice       = parsed["choices"]?[0];
-            var finishReason = choice?["finish_reason"]?.ToString();
-            var msg          = choice?["message"] as JObject;
-
-            if (msg == null)
-                return ProviderHelpers.Err($"Unexpected response structure: {rawResp}");
-
-            var text  = msg["content"]?.ToString()?.Trim() ?? "";
-            var calls = new List<LlmToolCall>();
-
-            if (finishReason == "tool_calls")
-            {
-                var tcArr = msg["tool_calls"] as JArray;
-                if (tcArr != null)
-                {
-                    foreach (var tc in tcArr)
+                    var req = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions")
                     {
-                        var fn      = tc["function"] as JObject;
-                        var argStr  = fn?["arguments"]?.ToString() ?? "{}";
-                        JObject args;
-                        try { args = JObject.Parse(argStr); } catch { args = new JObject(); }
+                        Content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json"),
+                    };
+                    if (!string.IsNullOrWhiteSpace(_apiKey))
+                        req.Headers.Add("Authorization", $"Bearer {_apiKey}");
+                    var resp = Http.SendAsync(req).GetAwaiter().GetResult();
+                    return (resp.StatusCode, resp.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+                },
+                (status, rawResp) =>
+                {
+                    if ((int)status >= 400)
+                        return ProviderHelpers.Err(ProviderHelpers.FriendlyApiError("AI provider", (int)status, rawResp));
 
-                        calls.Add(new LlmToolCall
+                    JObject parsed;
+                    try { parsed = JObject.Parse(rawResp); }
+                    catch { return ProviderHelpers.Err($"Unexpected API response: {rawResp}"); }
+
+                    var choice       = parsed["choices"]?[0];
+                    var finishReason = choice?["finish_reason"]?.ToString();
+                    var msg          = choice?["message"] as JObject;
+
+                    if (msg == null)
+                        return ProviderHelpers.Err($"Unexpected response structure: {rawResp}");
+
+                    var text  = msg["content"]?.ToString()?.Trim() ?? "";
+                    var calls = new List<LlmToolCall>();
+
+                    if (finishReason == "tool_calls")
+                    {
+                        var tcArr = msg["tool_calls"] as JArray;
+                        if (tcArr != null)
                         {
-                            Id    = tc["id"]?.ToString()       ?? Guid.NewGuid().ToString(),
-                            Name  = fn?["name"]?.ToString()    ?? "",
-                            Input = args,
-                        });
-                    }
-                }
-            }
+                            foreach (var tc in tcArr)
+                            {
+                                var fn     = tc["function"] as JObject;
+                                var argStr = fn?["arguments"]?.ToString() ?? "{}";
+                                JObject args;
+                                try { args = JObject.Parse(argStr); } catch { args = new JObject(); }
 
-            return new LlmResponse
-            {
-                StopReason = calls.Count > 0 ? "tool_use" : "end_turn",
-                Text       = text,
-                ToolCalls  = calls,
-            };
+                                calls.Add(new LlmToolCall
+                                {
+                                    Id    = tc["id"]?.ToString()    ?? Guid.NewGuid().ToString(),
+                                    Name  = fn?["name"]?.ToString() ?? "",
+                                    Input = args,
+                                });
+                            }
+                        }
+                    }
+
+                    return new LlmResponse
+                    {
+                        StopReason = calls.Count > 0 ? "tool_use" : "end_turn",
+                        Text       = text,
+                        ToolCalls  = calls,
+                    };
+                },
+                "OpenAI-compat");
+            return llmResp;
         }
 
         // Convert Anthropic-format messages → OpenAI-format messages
@@ -309,12 +303,38 @@ namespace PenguinClaw
                         continue;
                     }
 
-                    // Regular user message with content array — flatten to string
+                    // Regular user message with content array — flatten text, handle images
                     var sb = new StringBuilder();
+                    var imageBlocks = new JArray();
                     foreach (var block in arr)
-                        if (block["type"]?.ToString() == "text")
+                    {
+                        var btype = block["type"]?.ToString();
+                        if (btype == "text")
                             sb.Append(block["text"]?.ToString() ?? "");
-                    result.Add(new JObject { ["role"] = role, ["content"] = sb.ToString() });
+                        else if (btype == "image")
+                        {
+                            imageBlocks.Add(new JObject
+                            {
+                                ["type"] = "image_url",
+                                ["image_url"] = new JObject
+                                {
+                                    ["url"] = $"data:{block["source"]?["media_type"] ?? "image/png"};base64,{block["source"]?["data"]}",
+                                },
+                            });
+                        }
+                    }
+
+                    if (imageBlocks.Count > 0)
+                    {
+                        var contentArr = new JArray();
+                        if (sb.Length > 0) contentArr.Add(new JObject { ["type"] = "text", ["text"] = sb.ToString() });
+                        foreach (var ib in imageBlocks) contentArr.Add(ib);
+                        result.Add(new JObject { ["role"] = role, ["content"] = contentArr });
+                    }
+                    else
+                    {
+                        result.Add(new JObject { ["role"] = role, ["content"] = sb.ToString() });
+                    }
                 }
             }
 
@@ -383,6 +403,48 @@ namespace PenguinClaw
                 case "ollama": return "qwen2.5:7b";
                 default:       return "claude-haiku-4-5";
             }
+        }
+    }
+
+    // ── Retry policy ─────────────────────────────────────────────────────────
+
+    internal static class RetryPolicy
+    {
+        private static readonly int[] DelaysMs = { 1000, 2000, 4000 };
+
+        /// <summary>Retry the send operation on 429/5xx up to 3 times with exponential backoff.</summary>
+        public static LlmResponse SendWithRetry(
+            Func<(System.Net.HttpStatusCode status, string body)> attempt,
+            Func<System.Net.HttpStatusCode, string, LlmResponse> parse,
+            string providerName)
+        {
+            for (int i = 0; i <= DelaysMs.Length; i++)
+            {
+                System.Net.HttpStatusCode status;
+                string body;
+                try
+                {
+                    var result = attempt();
+                    status = result.status;
+                    body   = result.body;
+                }
+                catch (Exception ex)
+                {
+                    return ProviderHelpers.Err($"Connection error: {ex.Message}");
+                }
+
+                bool shouldRetry = (int)status == 429 || (int)status >= 500;
+                if (!shouldRetry || i == DelaysMs.Length)
+                {
+                    if (shouldRetry)
+                        PenguinClawActionLog.RecordRetryFailure(providerName, (int)status, i);
+                    return parse(status, body);
+                }
+
+                PenguinClawActionLog.RecordRetry(providerName, (int)status, i + 1);
+                System.Threading.Thread.Sleep(DelaysMs[i]);
+            }
+            return ProviderHelpers.Err("Max retries exceeded.");
         }
     }
 

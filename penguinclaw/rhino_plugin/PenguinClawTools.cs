@@ -531,9 +531,31 @@ namespace PenguinClaw
             };
         }
 
+        // Replaceable in tests. Default: call Execute normally.
+        internal static Func<string, JObject, string> OverrideDispatcher = null;
+
         // ── Dispatch ─────────────────────────────────────────────────────────────
 
         public static string Execute(string name, JObject input, RhinoDoc _unused)
+        {
+            try
+            {
+                return ExecuteInternal(name, input);
+            }
+            catch (Exception ex)
+            {
+                return new JObject
+                {
+                    ["success"]    = false,
+                    ["error"]      = "exception",
+                    ["tool"]       = name,
+                    ["message"]    = ex.Message,
+                    ["suggestion"] = "Check parameters and try again.",
+                }.ToString(Formatting.None);
+            }
+        }
+
+        private static string ExecuteInternal(string name, JObject input)
         {
             switch (name)
             {

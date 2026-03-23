@@ -17,6 +17,9 @@ namespace PenguinClaw
         private static Thread       _thread;
         private static bool         _running;
 
+        private static CancellationTokenSource _currentCts;
+        private static readonly object _ctsLock = new object();
+
         private const int Port = 8080;
 
         public static void StartServer()
@@ -91,6 +94,7 @@ namespace PenguinClaw
                     case "/health":           RouteHealth(resp); break;
                     case "/tools":            RouteTools(resp);  break;
                     case "/chat":             RouteChat(req, resp); break;
+                    case "/stop":             RouteStop(resp); break;
                     case "/viewport":         RouteViewport(resp); break;
                     case "/rebuild-registry": RouteRebuildRegistry(resp); break;
                     case "/settings":         RouteSettings(req, resp); break;
@@ -194,8 +198,16 @@ namespace PenguinClaw
             var history = (data["history"] as JArray) ?? new JArray();
             var doc     = RhinoDoc.ActiveDoc;
 
+            CancellationToken token;
+            lock (_ctsLock)
+            {
+                _currentCts?.Cancel();
+                _currentCts = new CancellationTokenSource();
+                token = _currentCts.Token;
+            }
+
             AgentResult result;
-            try   { result = PenguinClawAgent.Run(message, history, doc); }
+            try   { result = PenguinClawAgent.Run(message, history, doc, token); }
             catch (Exception ex)
             {
                 WriteJson(resp, new JObject
@@ -217,9 +229,21 @@ namespace PenguinClaw
 
             WriteJson(resp, new JObject
             {
-                ["response"]   = result.Response,
-                ["tool_calls"] = toolCallsJson,
+                ["response"]      = result.Response,
+                ["tool_calls"]    = toolCallsJson,
+                ["input_tokens"]  = result.InputTokens,
+                ["output_tokens"] = result.OutputTokens,
+                ["cached_tokens"] = result.CachedTokens,
             });
+        }
+
+        private static void RouteStop(HttpListenerResponse resp)
+        {
+            lock (_ctsLock)
+            {
+                _currentCts?.Cancel();
+            }
+            WriteJson(resp, new JObject { ["success"] = true, ["message"] = "Stop signal sent." });
         }
 
         private static void RouteViewport(HttpListenerResponse resp)

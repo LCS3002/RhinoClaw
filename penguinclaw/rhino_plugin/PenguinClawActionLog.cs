@@ -296,6 +296,59 @@ namespace PenguinClaw
             catch { }
         }
 
+        // ── Retry / recovery log entries ─────────────────────────────────────────
+
+        public static void RecordRetry(string provider, int statusCode, int attempt)
+        {
+            lock (_lock)
+            {
+                var log = LoadRaw();
+                log.Add(new JObject
+                {
+                    ["ts"]   = DateTime.Now.ToString("MM-dd HH:mm"),
+                    ["tool"] = "api_retry",
+                    ["desc"] = $"Retry {attempt}/3 from {provider} (HTTP {statusCode}) — waiting {(int)Math.Pow(2, attempt - 1)}s",
+                    ["ids"]  = new JArray(),
+                });
+                while (log.Count > MaxDiskEntries) log.RemoveAt(0);
+                Save(log);
+            }
+        }
+
+        public static void RecordRetryFailure(string provider, int statusCode, int attempts)
+        {
+            lock (_lock)
+            {
+                var log = LoadRaw();
+                log.Add(new JObject
+                {
+                    ["ts"]   = DateTime.Now.ToString("MM-dd HH:mm"),
+                    ["tool"] = "api_retry_failed",
+                    ["desc"] = $"All {attempts} retries failed for {provider} (HTTP {statusCode})",
+                    ["ids"]  = new JArray(),
+                });
+                while (log.Count > MaxDiskEntries) log.RemoveAt(0);
+                Save(log);
+            }
+        }
+
+        public static void RecordMalformedCall(string provider)
+        {
+            lock (_lock)
+            {
+                var log = LoadRaw();
+                log.Add(new JObject
+                {
+                    ["ts"]   = DateTime.Now.ToString("MM-dd HH:mm"),
+                    ["tool"] = "malformed_tool_call",
+                    ["desc"] = $"Malformed tool call from {provider} — injected recovery message",
+                    ["ids"]  = new JArray(),
+                });
+                while (log.Count > MaxDiskEntries) log.RemoveAt(0);
+                Save(log);
+            }
+        }
+
         // ── Helpers ──────────────────────────────────────────────────────────────
 
         private static bool IsReadOnly(string tool) =>

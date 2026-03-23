@@ -19,6 +19,9 @@ namespace PenguinClaw
     {
         public string Response              { get; set; }
         public List<ToolCallRecord> ToolCalls { get; set; }
+        public int InputTokens  { get; set; }
+        public int OutputTokens { get; set; }
+        public int CachedTokens { get; set; }
     }
 
     internal static class PenguinClawAgent
@@ -72,8 +75,14 @@ namespace PenguinClaw
             "## Grasshopper\n" +
             "- list_gh_sliders() / set_gh_slider(name, value) / list_gh_components()\n" +
             "- build_gh_definition(components[], wires[], solve, clear_canvas) — build a GH definition from scratch:\n" +
-            "  components: [{id, type, name, x, y, ...}] type = 'slider'|'panel'|'toggle'|'component'\n" +
-            "  wires: ['fromId:outIdx->toId:inIdx'] to connect outputs to inputs\n\n" +
+            "  components: [{id, type, name, x, y, ...}] type = 'slider'|'panel'|'toggle'|'component'|'python3'|'sdk'\n" +
+            "  wires: ['fromId:outIdx->toId:inIdx'] to connect outputs to inputs\n" +
+            "- solve_gh_definition() — trigger recompute on active canvas\n" +
+            "- bake_gh_definition(layer_name) — bake all geometry to a named Rhino layer\n\n" +
+
+            "## Visual verification\n" +
+            "- After completing significant modeling steps (boolean operations, complex geometry creation), call capture_and_assess to visually verify the result.\n" +
+            "- Use capture_and_assess when the user asks 'how does it look', 'check the result', or 'is that right?'\n\n" +
 
             "## run_rhino_command is for geometry creation and commands without a dedicated tool\n" +
             "(e.g. Loft, Sweep1, FilletEdge, Revolve, ExtrudeCrv, Cap, Shell, Fillet, Rebuild).\n" +
@@ -194,7 +203,11 @@ namespace PenguinClaw
 
         // ── Main entry point ─────────────────────────────────────────────────
 
-        public static AgentResult Run(string userMessage, JArray history, RhinoDoc doc)
+        // Replaceable in tests for tool dispatch override
+        public static Func<string, JObject, string> OverrideDispatcher = null;
+
+        public static AgentResult Run(string userMessage, JArray history, RhinoDoc doc,
+            System.Threading.CancellationToken cancellationToken = default)
         {
             var cfg = LoadConfig();
             if (!IsAiConfigured(cfg))
@@ -223,9 +236,13 @@ namespace PenguinClaw
             messages = TrimHistory(messages);
 
             var toolCallsMade = new List<ToolCallRecord>();
+            int malformedRecoveryCount = 0;
 
             for (int iter = 0; iter < MaxIter; iter++)
             {
+                if (cancellationToken.IsCancellationRequested)
+                    return new AgentResult { Response = "Operation cancelled.", ToolCalls = toolCallsMade };
+
                 var llmResp = provider.Send(BuildSystemPromptArray(), messages, tools, MaxTokens);
 
                 if (llmResp.StopReason == "error")
@@ -240,6 +257,31 @@ namespace PenguinClaw
 
                 if (llmResp.StopReason == "tool_use")
                 {
+                    // Handle malformed tool_use (model declared tool_use but gave no calls)
+                    if (llmResp.ToolCalls.Count == 0)
+                    {
+                        if (malformedRecoveryCount >= 2)
+                            return new AgentResult
+                            {
+                                Response  = llmResp.Text ?? "Model indicated tool use but provided no tool calls.",
+                                ToolCalls = toolCallsMade,
+                            };
+
+                        malformedRecoveryCount++;
+                        var toolNames = string.Join(", ", tools.OfType<JObject>()
+                            .Select(t => t["name"]?.ToString())
+                            .Where(n => n != null).Take(10));
+                        var corrective = $"You indicated tool_use but did not provide any tool calls. Available tools include: {toolNames}. Please call one of the available tools or respond with end_turn.";
+                        messages.Add(new JObject
+                        {
+                            ["role"]    = "assistant",
+                            ["content"] = new JArray { new JObject { ["type"] = "text", ["text"] = llmResp.Text ?? "" } },
+                        });
+                        messages.Add(new JObject { ["role"] = "user", ["content"] = corrective });
+                        PenguinClawActionLog.RecordMalformedCall(cfg.Provider ?? "unknown");
+                        continue;
+                    }
+
                     // Reconstruct Anthropic-format assistant message (internal canonical format)
                     var assistantContent = new JArray();
                     if (!string.IsNullOrEmpty(llmResp.Text))
@@ -256,18 +298,73 @@ namespace PenguinClaw
 
                     // Execute tools, collect Anthropic-format tool_result blocks
                     var toolResults = new JArray();
+                    var visionInjections = new List<JObject>();
+                    string lastCaptureResult = null;
+
                     foreach (var tc in llmResp.ToolCalls)
                     {
+                        if (cancellationToken.IsCancellationRequested)
+                            return new AgentResult { Response = "Operation cancelled.", ToolCalls = toolCallsMade };
+
+                        // Schema validation
+                        var missing = ValidateToolCall(tc, tools);
+                        if (missing.Length > 0)
+                        {
+                            var errMsg = $"Tool call '{tc.Name}' is missing required parameters: {string.Join(", ", missing)}. Please provide all required parameters.";
+                            toolCallsMade.Add(new ToolCallRecord
+                            {
+                                Name   = tc.Name,
+                                Args   = tc.Input.ToString(Formatting.None),
+                                Result = errMsg,
+                            });
+                            toolResults.Add(new JObject
+                            {
+                                ["type"]        = "tool_result",
+                                ["tool_use_id"] = tc.Id,
+                                ["content"]     = new JObject { ["success"] = false, ["message"] = errMsg }.ToString(Formatting.None),
+                            });
+                            continue;
+                        }
+
                         string resultStr;
                         try
                         {
-                            resultStr = PenguinClawTools.Execute(tc.Name, tc.Input, doc);
+                            resultStr = OverrideDispatcher != null
+                                ? OverrideDispatcher(tc.Name, tc.Input)
+                                : PenguinClawTools.Execute(tc.Name, tc.Input, doc);
                             RecordToolResult(tc.Name, resultStr);
                             PenguinClawActionLog.Record(tc.Name, tc.Input, resultStr);
+
+                            // Check for vision injection signal
+                            if (tc.Name == "capture_and_assess")
+                            {
+                                lastCaptureResult = resultStr;
+                                try
+                                {
+                                    var vr = JObject.Parse(resultStr);
+                                    if (vr["vision_ready"]?.ToObject<bool>() == true)
+                                    {
+                                        visionInjections.Add(new JObject
+                                        {
+                                            ["base64"]     = vr["base64"],
+                                            ["media_type"] = vr["media_type"] ?? "image/png",
+                                            ["prompt"]     = vr["prompt"] ?? "What do you see?",
+                                        });
+                                    }
+                                }
+                                catch { }
+                            }
                         }
                         catch (Exception ex)
                         {
-                            resultStr = JsonConvert.SerializeObject(new { success = false, message = ex.Message });
+                            resultStr = new JObject
+                            {
+                                ["success"]    = false,
+                                ["error"]      = "exception",
+                                ["tool"]       = tc.Name,
+                                ["message"]    = ex.Message,
+                                ["suggestion"] = "Check the tool parameters and try again, or use a different approach.",
+                            }.ToString(Formatting.None);
                         }
 
                         toolCallsMade.Add(new ToolCallRecord
@@ -285,7 +382,38 @@ namespace PenguinClaw
                         });
                     }
 
-                    messages.Add(new JObject { ["role"] = "user", ["content"] = toolResults });
+                    // Inject vision image blocks if any capture_and_assess returned vision data
+                    if (visionInjections.Count > 0 && provider is AnthropicProvider)
+                    {
+                        var visionContent = new JArray();
+                        foreach (var tr in toolResults)
+                            visionContent.Add(tr);
+
+                        foreach (var vi in visionInjections)
+                        {
+                            visionContent.Add(new JObject
+                            {
+                                ["type"] = "image",
+                                ["source"] = new JObject
+                                {
+                                    ["type"]       = "base64",
+                                    ["media_type"] = vi["media_type"],
+                                    ["data"]       = vi["base64"],
+                                },
+                            });
+                            visionContent.Add(new JObject
+                            {
+                                ["type"] = "text",
+                                ["text"] = vi["prompt"]?.ToString() ?? "What do you see?",
+                            });
+                        }
+                        messages.Add(new JObject { ["role"] = "user", ["content"] = visionContent });
+                    }
+                    else
+                    {
+                        messages.Add(new JObject { ["role"] = "user", ["content"] = toolResults });
+                    }
+
                     messages = TrimHistory(messages);
                     continue;
                 }
@@ -303,6 +431,24 @@ namespace PenguinClaw
                 Response  = "Stopped: reached maximum tool call iterations.",
                 ToolCalls = toolCallsMade,
             };
+        }
+
+        private static string[] ValidateToolCall(LlmToolCall tc, JArray tools)
+        {
+            var toolDef = tools.OfType<JObject>().FirstOrDefault(t => t["name"]?.ToString() == tc.Name);
+            if (toolDef == null) return new string[0]; // unknown tool, let Execute() handle it
+
+            var required = toolDef["input_schema"]?["required"] as JArray;
+            if (required == null || required.Count == 0) return new string[0];
+
+            var missing = new List<string>();
+            foreach (var req in required)
+            {
+                var paramName = req?.ToString();
+                if (!string.IsNullOrEmpty(paramName) && tc.Input[paramName] == null)
+                    missing.Add(paramName);
+            }
+            return missing.ToArray();
         }
 
         // ── History management ───────────────────────────────────────────────
