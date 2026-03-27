@@ -26,9 +26,9 @@ namespace PenguinClaw
 
     internal static class PenguinClawAgent
     {
-        private const int MaxTokens = 8192;
-        private const int MaxHistory = 30;
-        private const int MaxIter   = 25;
+        private const int MaxTokens  = 8192;
+        private const int MaxHistory = 20;   // reduced: vision base64 bloats history fast
+        private const int MaxIter    = 25;
 
         private const string BaseSystemPrompt =
             "You are PenguinClaw — an AI agent embedded inside Rhino 8. " +
@@ -80,6 +80,26 @@ namespace PenguinClaw
             "- solve_gh_definition() — trigger recompute on active canvas\n" +
             "- bake_gh_definition(layer_name) — bake all geometry to a named Rhino layer\n\n" +
 
+            "## Spatial placement — always measure, never guess\n" +
+            "- Before placing any object relative to another, call get_scene_layout() to see all objects with bounding boxes.\n" +
+            "- bounding_box format: [xmin, ymin, zmin, xmax, ymax, zmax]\n" +
+            "- To sit object B on top of object A:  place_object(B, anchor='base', target_z=A_bbox[5])\n" +
+            "- To place B next to A (right side):   place_object(B, anchor='min', target_x=A_bbox[3]+gap)\n" +
+            "- To center B above A:                 place_object(B, anchor='base', target_x=A_center_x, target_y=A_center_y, target_z=A_bbox[5])\n" +
+            "- Never move by a guessed delta when you need precise placement — use place_object instead.\n\n" +
+
+            "## Building tables and surfaces\n" +
+            "- Build a table as: 4 legs (box, Z=0 to Z=table_h) + tabletop (box, Z=table_h to Z=table_h+0.2).\n" +
+            "- Never create a table as a single flat slab below or overlapping existing geometry.\n" +
+            "- After building the table, call get_scene_layout() to confirm the tabletop Z, then use place_object to sit objects on it.\n\n" +
+
+            "## Complex figurative models (characters, creatures, objects)\n" +
+            "- Plan all coordinates before starting: sketch parts, heights, and offsets mentally first.\n" +
+            "- Build bottom-up: feet → body → head → details (eyes, beak, fins, etc.).\n" +
+            "- After every 4–5 tool calls on a complex model, call capture_and_assess to verify shape and proportions.\n" +
+            "- Use specific colours per part as you go — do not leave all colouring to the end.\n" +
+            "- Prefer primitives (Box, Sphere, Cylinder, Cone) over Python for geometric shapes.\n\n" +
+
             "## Visual verification\n" +
             "- After completing significant modeling steps (boolean operations, complex geometry creation), call capture_and_assess to visually verify the result.\n" +
             "- Use capture_and_assess when the user asks 'how does it look', 'check the result', or 'is that right?'\n\n" +
@@ -88,18 +108,28 @@ namespace PenguinClaw
             "(e.g. Loft, Sweep1, FilletEdge, Revolve, ExtrudeCrv, Cap, Shell, Fillet, Rebuild).\n" +
             "Do NOT use run_rhino_command for: Move, Scale, Rotate, Delete, Mirror, Array, Boolean operations,\n" +
             "layer management, or colour — all of those have dedicated tools above that are typed and undo-safe.\n\n" +
-            "## Complex operations — always prefer execute_python_code for:\n" +
-            "- Bulk operations (create 20 objects, iterate over selection)\n" +
+            "## execute_python_code — use for bulk/complex operations\n" +
+            "- Bulk operations (create 20+ objects, iterate over selection, parametric geometry)\n" +
             "- Anything requiring loops, conditionals, or math\n" +
             "- Loft/Sweep/Extrude/Revolve on specific curve IDs\n" +
             "- Anything that would take more than 4 individual tool calls\n" +
-            "Variable 'doc' is pre-set. Use 'import rhinoscriptsyntax as rs' for high-level ops or 'import Rhino' for RhinoCommon.\n" +
-            "Always print() results so they appear in output.\n\n" +
+            "IMPORTANT: the engine is IronPython 2 (not Python 3). Syntax rules:\n" +
+            "- NO f-strings — use 'Hello {}'.format(x) instead of f'Hello {x}'\n" +
+            "- NO walrus operator :=\n" +
+            "- print is a function: print('x') is fine, print 'x' is not\n" +
+            "- 'import rhinoscriptsyntax as rs' for high-level ops; 'import Rhino' for RhinoCommon\n" +
+            "- Variable 'doc' is pre-set to the active RhinoDoc\n" +
+            "- Always print() results so they appear in output\n" +
+            "- If Python fails, read the error message carefully — it will tell you the line and syntax issue\n\n" +
+
+            "## Scene query tools\n" +
+            "- get_scene_layout()          — all objects + bounding boxes in one call (use before spatial placement)\n" +
+            "- get_object_info(id)         — single object detail including bounding_box\n" +
+            "- get_document_summary()      — object counts, layers, scene bbox overview\n\n" +
 
             "## Context and memory\n" +
             "- Scene state and action history below are your persistent memory.\n" +
             "- To undo: call undo(steps=1).\n" +
-            "- Call get_document_summary at session start if you need a scene overview.\n" +
             "- Only call get_selected_objects when the user explicitly asks about their selection.";
 
         // Populated by PenguinClawScan via /rebuild-registry
@@ -455,6 +485,10 @@ namespace PenguinClaw
 
         private static JArray TrimHistory(JArray messages)
         {
+            // Strip base64 image data from all but the most recent vision turn
+            // to prevent capture_and_assess history from blowing up the token count
+            messages = StripOldVisionImages(messages);
+
             if (messages.Count <= MaxHistory) return messages;
 
             int start = messages.Count - MaxHistory;
@@ -477,6 +511,67 @@ namespace PenguinClaw
             for (int i = start; i < messages.Count; i++)
                 trimmed.Add(messages[i]);
             return trimmed;
+        }
+
+        /// <summary>
+        /// Replaces base64 image blocks in history with a lightweight placeholder,
+        /// keeping only the most recent vision image. Prevents token overflow when
+        /// capture_and_assess is called multiple times in a session.
+        /// </summary>
+        private static JArray StripOldVisionImages(JArray messages)
+        {
+            // Find index of the last user message that contains an image block
+            int lastImageIdx = -1;
+            for (int i = messages.Count - 1; i >= 0; i--)
+            {
+                var role    = messages[i]["role"]?.ToString();
+                var content = messages[i]["content"] as JArray;
+                if (role == "user" && content != null && content.Any(b => b["type"]?.ToString() == "image"))
+                {
+                    lastImageIdx = i;
+                    break;
+                }
+            }
+
+            if (lastImageIdx < 0) return messages; // no images in history
+
+            var result = new JArray();
+            for (int i = 0; i < messages.Count; i++)
+            {
+                var msg     = (JObject)messages[i];
+                var role    = msg["role"]?.ToString();
+                var content = msg["content"] as JArray;
+
+                if (i == lastImageIdx || role != "user" || content == null
+                    || !content.Any(b => b["type"]?.ToString() == "image"))
+                {
+                    result.Add(msg.DeepClone());
+                    continue;
+                }
+
+                // Replace image blocks with a placeholder text block
+                var stripped = new JArray();
+                bool addedPlaceholder = false;
+                foreach (var block in content)
+                {
+                    if (block["type"]?.ToString() == "image")
+                    {
+                        if (!addedPlaceholder)
+                        {
+                            stripped.Add(new JObject { ["type"] = "text", ["text"] = "[viewport image — stripped from history]" });
+                            addedPlaceholder = true;
+                        }
+                    }
+                    else
+                    {
+                        stripped.Add(block.DeepClone());
+                    }
+                }
+                var clone = msg.DeepClone() as JObject;
+                clone["content"] = stripped;
+                result.Add(clone);
+            }
+            return result;
         }
 
         // ── Config management ────────────────────────────────────────────────

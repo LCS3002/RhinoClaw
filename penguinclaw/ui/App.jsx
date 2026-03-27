@@ -2,6 +2,27 @@ import { useState, useEffect, useRef } from "react";
 
 const API_BASE = window.location.port === "5173" ? "http://localhost:8080" : "";
 
+// ── Palette ──────────────────────────────────────────────────────────────────
+const C = {
+  black:      "#111111",
+  blackSoft:  "#1C1C1C",
+  orange:     "#F97316",
+  orangeDim:  "#EA6C0D",
+  orangeFaint:"rgba(249,115,22,0.12)",
+  orangeBorder:"rgba(249,115,22,0.25)",
+  white:      "#FFFFFF",
+  offWhite:   "#F9F7F5",
+  gray100:    "#F3F4F6",
+  gray300:    "#D1D5DB",
+  gray500:    "#6B7280",
+  gray700:    "#374151",
+  red:        "#DC2626",
+  green:      "#059669",
+  purple:     "#9333EA",
+  purpleFaint:"rgba(147,51,234,0.08)",
+  purpleBorder:"rgba(147,51,234,0.2)",
+};
+
 const PROVIDERS = {
   anthropic: {
     label:       "Anthropic (best quality)",
@@ -29,39 +50,39 @@ const PROVIDERS = {
   },
 };
 
-// ── Penguin logo ────────────────────────────────────────────────────────────
-function PenguinMark({ size = 24, color = "#2563EB", glow = false }) {
+// ── Penguin logo ─────────────────────────────────────────────────────────────
+function PenguinMark({ size = 24, glow = false }) {
   return (
     <svg width={size} height={size * 1.25} viewBox="0 0 80 100" fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={glow ? { filter: `drop-shadow(0 0 8px ${color}44)` } : {}}>
+      style={glow ? { filter: `drop-shadow(0 0 6px rgba(249,115,22,0.5))` } : {}}>
       {/* Body */}
-      <ellipse cx="40" cy="63" rx="26" ry="32" fill={color} />
+      <ellipse cx="40" cy="63" rx="26" ry="32" fill={C.black} />
       {/* Belly */}
-      <ellipse cx="40" cy="69" rx="14" ry="21" fill="#FFFFFF" />
+      <ellipse cx="40" cy="69" rx="14" ry="21" fill={C.white} />
       {/* Head */}
-      <ellipse cx="40" cy="30" rx="18" ry="18" fill={color} />
+      <ellipse cx="40" cy="30" rx="18" ry="18" fill={C.black} />
       {/* Eyes */}
-      <circle cx="33" cy="26" r="4.5" fill="#FFFFFF" />
-      <circle cx="47" cy="26" r="4.5" fill="#FFFFFF" />
-      <circle cx="34.5" cy="26.5" r="2.2" fill="#1A1A2E" />
-      <circle cx="48.5" cy="26.5" r="2.2" fill="#1A1A2E" />
-      <circle cx="35.2" cy="25.8" r="0.8" fill="#FFFFFF" />
-      <circle cx="49.2" cy="25.8" r="0.8" fill="#FFFFFF" />
+      <circle cx="33" cy="26" r="4.5" fill={C.white} />
+      <circle cx="47" cy="26" r="4.5" fill={C.white} />
+      <circle cx="34.5" cy="26.5" r="2.2" fill={C.black} />
+      <circle cx="48.5" cy="26.5" r="2.2" fill={C.black} />
+      <circle cx="35.2" cy="25.8" r="0.8" fill={C.white} />
+      <circle cx="49.2" cy="25.8" r="0.8" fill={C.white} />
       {/* Beak */}
-      <polygon points="40,34 35,42 45,42" fill="#F59E0B" />
+      <polygon points="40,34 35,42 45,42" fill={C.orange} />
       {/* Left wing */}
-      <ellipse cx="15" cy="63" rx="10" ry="21" fill={color} transform="rotate(-12 15 63)" />
+      <ellipse cx="15" cy="63" rx="10" ry="21" fill={C.black} transform="rotate(-12 15 63)" />
       {/* Right wing */}
-      <ellipse cx="65" cy="63" rx="10" ry="21" fill={color} transform="rotate(12 65 63)" />
+      <ellipse cx="65" cy="63" rx="10" ry="21" fill={C.black} transform="rotate(12 65 63)" />
       {/* Feet */}
-      <ellipse cx="31" cy="94" rx="10" ry="5" fill="#F59E0B" />
-      <ellipse cx="51" cy="94" rx="10" ry="5" fill="#F59E0B" />
+      <ellipse cx="31" cy="94" rx="10" ry="5" fill={C.orange} />
+      <ellipse cx="51" cy="94" rx="10" ry="5" fill={C.orange} />
     </svg>
   );
 }
 
-// ── Tool call card ───────────────────────────────────────────────────────────
+// ── Tool call card ────────────────────────────────────────────────────────────
 function ToolCall({ tool }) {
   const isVision = tool.name === "capture_and_assess";
   let imageSrc = null;
@@ -71,24 +92,27 @@ function ToolCall({ tool }) {
       if (r.base64) imageSrc = `data:image/png;base64,${r.base64}`;
     } catch {}
   }
+  const borderColor = isVision ? C.purple     : C.orange;
+  const bgColor     = isVision ? C.purpleFaint : C.orangeFaint;
+  const bdColor     = isVision ? C.purpleBorder: C.orangeBorder;
   return (
     <div style={{
-      margin: "4px 0", padding: "6px 10px",
-      background: isVision ? "rgba(147,51,234,0.05)" : "rgba(37,99,235,0.05)",
-      border: `1px solid ${isVision ? "rgba(147,51,234,0.15)" : "rgba(37,99,235,0.15)"}`,
-      borderLeft: `3px solid ${isVision ? "#9333EA" : "#2563EB"}`,
+      margin: "3px 0", padding: "5px 9px",
+      background: bgColor,
+      border: `1px solid ${bdColor}`,
+      borderLeft: `3px solid ${borderColor}`,
       borderRadius: "4px",
       fontFamily: "monospace", fontSize: "11px",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-        <span style={{ color: isVision ? "#9333EA" : "#2563EB", fontWeight: 700 }}>
+        <span style={{ color: borderColor, fontWeight: 700 }}>
           {isVision ? "👁" : "⚡"} {tool.name}
         </span>
-        <span style={{ marginLeft: "auto", color: "#059669", fontSize: "10px" }}>✓</span>
+        <span style={{ marginLeft: "auto", color: C.green, fontSize: "10px" }}>✓</span>
       </div>
       {tool.result && (
-        <div style={{ color: "#6B7280", fontSize: "10px", marginTop: "3px",
-          borderTop: `1px solid ${isVision ? "rgba(147,51,234,0.08)" : "rgba(37,99,235,0.08)"}`, paddingTop: "3px",
+        <div style={{ color: C.gray500, fontSize: "10px", marginTop: "3px",
+          borderTop: `1px solid ${bdColor}`, paddingTop: "3px",
           wordBreak: "break-all" }}>
           → {tool.result.length > 120 ? tool.result.slice(0, 120) + "…" : tool.result}
         </div>
@@ -96,7 +120,7 @@ function ToolCall({ tool }) {
       {imageSrc && (
         <img src={imageSrc} alt="viewport" style={{
           marginTop: "6px", maxWidth: "100%", maxHeight: "120px",
-          borderRadius: "4px", border: "1px solid rgba(147,51,234,0.3)",
+          borderRadius: "4px", border: `1px solid ${C.purpleBorder}`,
           objectFit: "contain",
         }} />
       )}
@@ -104,14 +128,15 @@ function ToolCall({ tool }) {
   );
 }
 
-// ── Chat message ─────────────────────────────────────────────────────────────
+// ── Chat message ──────────────────────────────────────────────────────────────
 function Message({ msg }) {
   if (msg.role === "user") {
     return (
       <div style={{ display: "flex", justifyContent: "flex-end", margin: "8px 0" }}>
         <div style={{
-          maxWidth: "80%", background: "linear-gradient(135deg,#2563EB,#1D4ED8)",
-          color: "#fff", padding: "8px 12px", borderRadius: "14px 14px 3px 14px",
+          maxWidth: "80%",
+          background: `linear-gradient(135deg, ${C.orange}, ${C.orangeDim})`,
+          color: C.white, padding: "8px 12px", borderRadius: "14px 14px 3px 14px",
           fontSize: "13px", lineHeight: 1.5,
         }}>{msg.text}</div>
       </div>
@@ -121,19 +146,19 @@ function Message({ msg }) {
     <div style={{ margin: "8px 0", display: "flex", gap: "8px" }}>
       <div style={{
         width: 26, height: 26, borderRadius: "50%",
-        background: "#EEF2FF",
+        background: C.black,
         display: "flex", alignItems: "center", justifyContent: "center",
         flexShrink: 0, marginTop: 2,
-        border: "1px solid rgba(37,99,235,0.2)",
-      }}><PenguinMark size={16} color="#2563EB" glow /></div>
+        border: `1px solid ${C.orangeBorder}`,
+      }}><PenguinMark size={16} glow /></div>
       <div style={{ flex: 1, minWidth: 0 }}>
         {msg.tools && msg.tools.map((t, i) => <ToolCall key={i} tool={t} />)}
         {msg.text_final && (
           <div style={{ marginTop: msg.tools?.length ? "6px" : 0,
-            color: "#1A1A2E", fontSize: "13px", lineHeight: 1.6 }}>
+            color: C.gray700, fontSize: "13px", lineHeight: 1.6 }}>
             {msg.text_final.split("**").map((p, i) =>
               i % 2 === 1
-                ? <strong key={i} style={{ color: "#2563EB" }}>{p}</strong>
+                ? <strong key={i} style={{ color: C.black }}>{p}</strong>
                 : <span key={i}>{p}</span>
             )}
           </div>
@@ -156,14 +181,14 @@ function inferCategory(cat, name = "") {
 
 // ── Settings form ─────────────────────────────────────────────────────────────
 function SettingsForm({ onSaved }) {
-  const [provider,        setProvider]        = useState("anthropic");
-  const [apiKey,          setApiKey]          = useState("");
-  const [model,           setModel]           = useState("");
-  const [ollamaUrl,       setOllamaUrl]       = useState("http://localhost:11434");
-  const [saving,          setSaving]          = useState(false);
-  const [msg,             setMsg]             = useState({ type: "", text: "" });
-  const [loaded,          setLoaded]          = useState(false);
-  const [providerStatus,  setProviderStatus]  = useState(null); // null=unknown, true=ok, false=error
+  const [provider,       setProvider]       = useState("anthropic");
+  const [apiKey,         setApiKey]         = useState("");
+  const [model,          setModel]          = useState("");
+  const [ollamaUrl,      setOllamaUrl]      = useState("http://localhost:11434");
+  const [saving,         setSaving]         = useState(false);
+  const [msg,            setMsg]            = useState({ type: "", text: "" });
+  const [loaded,         setLoaded]         = useState(false);
+  const [providerStatus, setProviderStatus] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -185,8 +210,8 @@ function SettingsForm({ onSaved }) {
     fetch(`${API_BASE}/settings`)
       .then(r => r.json())
       .then(d => {
-        setProvider(d.provider   || "anthropic");
-        setModel(d.model         || "");
+        setProvider(d.provider    || "anthropic");
+        setModel(d.model          || "");
         setOllamaUrl(d.ollama_url || "http://localhost:11434");
         setLoaded(true);
       })
@@ -220,20 +245,19 @@ function SettingsForm({ onSaved }) {
     setSaving(false);
   }
 
-  if (!loaded) return <div style={{ color: "#9CA3AF", fontSize: "11px" }}>Loading…</div>;
+  if (!loaded) return <div style={{ color: C.gray500, fontSize: "11px" }}>Loading…</div>;
 
   const p = PROVIDERS[provider] || PROVIDERS.anthropic;
   const inputStyle = {
-    background: "#FFFFFF", border: "1px solid #E5E2DB",
-    borderRadius: "6px", padding: "8px 10px", color: "#1A1A2E",
+    background: C.white, border: `1px solid ${C.gray300}`,
+    borderRadius: "6px", padding: "8px 10px", color: C.black,
     fontSize: "11px", outline: "none", width: "100%", boxSizing: "border-box",
   };
-  const labelStyle = { color: "#6B7280", fontSize: "10px", marginBottom: "3px", display: "block" };
+  const labelStyle = { color: C.gray500, fontSize: "10px", marginBottom: "3px", display: "block" };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px", width: "100%" }}>
 
-      {/* Provider */}
       <div>
         <span style={labelStyle}>AI Provider</span>
         <select value={provider} onChange={e => { setProvider(e.target.value); setMsg({ type: "", text: "" }); }}
@@ -244,10 +268,8 @@ function SettingsForm({ onSaved }) {
         </select>
       </div>
 
-      {/* Description */}
-      <div style={{ color: "#9CA3AF", fontSize: "10px", lineHeight: 1.5 }}>{p.description}</div>
+      <div style={{ color: C.gray500, fontSize: "10px", lineHeight: 1.5 }}>{p.description}</div>
 
-      {/* API key (hidden for Ollama) */}
       {provider !== "ollama" && (
         <div>
           <span style={labelStyle}>API Key</span>
@@ -262,7 +284,6 @@ function SettingsForm({ onSaved }) {
         </div>
       )}
 
-      {/* Ollama URL */}
       {provider === "ollama" && (
         <div>
           <span style={labelStyle}>Ollama URL</span>
@@ -276,10 +297,9 @@ function SettingsForm({ onSaved }) {
         </div>
       )}
 
-      {/* Model override */}
       <div>
         <span style={labelStyle}>
-          Model override <span style={{ color: "#D1D5DB" }}>(optional — leave blank for default)</span>
+          Model override <span style={{ color: C.gray300 }}>(optional — leave blank for default)</span>
         </span>
         <input
           type="text"
@@ -290,32 +310,28 @@ function SettingsForm({ onSaved }) {
         />
       </div>
 
-      {/* Provider connection status */}
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "10px", color: "#6B7280" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "10px", color: C.gray500 }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%",
-          background: providerStatus === null ? "#D1D5DB" : providerStatus ? "#059669" : "#DC2626" }} />
+          background: providerStatus === null ? C.gray300 : providerStatus ? C.green : C.red }} />
         {providerStatus === null ? "Checking…" : providerStatus ? "Connected" : "Not configured"}
       </div>
 
-      {/* Feedback */}
       {msg.text && (
-        <div style={{ fontSize: "10px", textAlign: "center", color: msg.type === "ok" ? "#059669" : "#DC2626" }}>
+        <div style={{ fontSize: "10px", textAlign: "center", color: msg.type === "ok" ? C.green : C.red }}>
           {msg.text}
         </div>
       )}
 
-      {/* Save */}
       <button onClick={save} disabled={saving} style={{
-        background: "linear-gradient(135deg,#2563EB,#1D4ED8)", border: "none",
-        borderRadius: "6px", padding: "9px", color: "#fff",
-        fontSize: "12px", fontWeight: 700, cursor: "pointer",
+        background: saving ? C.gray300 : `linear-gradient(135deg, ${C.orange}, ${C.orangeDim})`,
+        border: "none", borderRadius: "6px", padding: "9px", color: C.white,
+        fontSize: "12px", fontWeight: 700, cursor: saving ? "default" : "pointer",
       }}>
         {saving ? "Saving…" : "Save & Connect"}
       </button>
 
-      {/* Link */}
       <a href={p.link} target="_blank" rel="noreferrer"
-        style={{ color: "#9CA3AF", fontSize: "10px", textAlign: "center", textDecoration: "none" }}>
+        style={{ color: C.gray500, fontSize: "10px", textAlign: "center", textDecoration: "none" }}>
         {p.linkLabel}
       </a>
     </div>
@@ -336,19 +352,18 @@ export default function PenguinClaw() {
     fetch_ok: false, rhino_connected: false, document_open: false,
     ai_configured: false, tools_loaded: 0, provider: "anthropic",
   });
-  const [tab, setTab]             = useState("chat");
-  const [isTyping, setIsTyping]   = useState(false);
+  const [tab, setTab]               = useState("chat");
+  const [isTyping, setIsTyping]     = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [abortCtrl, setAbortCtrl] = useState(null);
+  const [abortCtrl, setAbortCtrl]   = useState(null);
   const [visionActive, setVisionActive] = useState(false);
-  const [turnStats, setTurnStats] = useState({ turn: 0, inputTokens: 0, outputTokens: 0 });
+  const [turnStats, setTurnStats]   = useState({ turn: 0, inputTokens: 0, outputTokens: 0 });
   const chatEndRef = useRef(null);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isTyping]);
   useEffect(() => { try { localStorage.setItem("pc_messages", JSON.stringify(messages)); } catch {} }, [messages]);
   useEffect(() => { try { localStorage.setItem("pc_history",  JSON.stringify(history));  } catch {} }, [history]);
 
-  // Poll health
   useEffect(() => {
     let alive = true;
     const poll = async () => {
@@ -374,7 +389,6 @@ export default function PenguinClaw() {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
-  // Poll tools
   useEffect(() => {
     let alive = true;
     const poll = async () => {
@@ -450,30 +464,31 @@ export default function PenguinClaw() {
 
   const dot = (ok, unknown) => ({
     width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-    background: unknown ? "#D1D5DB" : ok ? "#059669" : "#DC2626",
+    background: unknown ? C.gray300 : ok ? C.green : C.red,
   });
-  const catColor = c => c === "GH" ? "#9333EA" : c === "Rhino" ? "#F59E0B" : "#2563EB";
+  const catColor = c => c === "GH" ? C.purple : c === "Rhino" ? C.orange : C.gray700;
 
   const providerLabel = PROVIDERS[health.provider]?.label?.split(" ")[0] || "AI";
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#F7F6F2", display: "flex", flexDirection: "column", fontFamily: "'DM Sans',system-ui,sans-serif", overflow: "hidden" }}>
+    <div style={{ position: "fixed", inset: 0, background: C.offWhite, display: "flex", flexDirection: "column", fontFamily: "'DM Sans',system-ui,sans-serif", overflow: "hidden" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=DM+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
         * { box-sizing: border-box; }
-        @keyframes dotBounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+        @keyframes dotBounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
         @keyframes eyeBlink { 0%,100%{transform:scaleY(1)} 40%{transform:scaleY(0.1)} }
         ::-webkit-scrollbar { width: 3px; }
-        ::-webkit-scrollbar-thumb { background: rgba(37,99,235,0.2); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb { background: rgba(249,115,22,0.3); border-radius: 2px; }
         select, input, textarea { color-scheme: light; }
       `}</style>
 
       {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", borderBottom: "1px solid rgba(37,99,235,0.1)", background: "#FFFFFF", flexShrink: 0 }}>
-        <PenguinMark size={20} color="#2563EB" glow />
-        <span style={{ fontSize: "13px", fontWeight: 700, color: "#2563EB", letterSpacing: "0.1em", fontFamily: "'Space Grotesk',sans-serif" }}>PENGUINCLAW</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 12px", background: C.black, flexShrink: 0 }}>
+        <PenguinMark size={20} glow />
+        <span style={{ fontSize: "13px", fontWeight: 700, color: C.white, letterSpacing: "0.1em", fontFamily: "'Space Grotesk',sans-serif" }}>
+          PENGUIN<span style={{ color: C.orange }}>CLAW</span>
+        </span>
 
-        {/* Status dots */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "5px" }}>
           <div title="Server"   style={dot(health.fetch_ok, false)} />
           <div title="Rhino"    style={dot(health.rhino_connected, !health.fetch_ok)} />
@@ -481,11 +496,11 @@ export default function PenguinClaw() {
           <div title={providerLabel} style={dot(health.ai_configured, !health.fetch_ok)} />
         </div>
 
-        <button onClick={() => setSidebarOpen(o => !o)} title="Status" style={{ background: "none", border: "none", color: sidebarOpen ? "#2563EB" : "#9CA3AF", cursor: "pointer", fontSize: "14px", padding: "2px 4px", lineHeight: 1 }}>☰</button>
+        <button onClick={() => setSidebarOpen(o => !o)} title="Status" style={{ background: "none", border: "none", color: sidebarOpen ? C.orange : "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: "14px", padding: "2px 4px", lineHeight: 1 }}>☰</button>
       </div>
 
       {/* ── Tabs ── */}
-      <div style={{ display: "flex", borderBottom: "1px solid #E5E2DB", background: "#FFFFFF", flexShrink: 0 }}>
+      <div style={{ display: "flex", borderBottom: `1px solid ${C.gray300}`, background: C.white, flexShrink: 0 }}>
         {[
           ["chat",     `💬 Chat`],
           ["tools",    `🔧 Tools (${health.tools_loaded})`],
@@ -494,8 +509,8 @@ export default function PenguinClaw() {
           <button key={t} onClick={() => setTab(t)} style={{
             padding: "7px 14px", fontSize: "11px", cursor: "pointer",
             background: "none", border: "none",
-            color: tab === t ? "#2563EB" : "#9CA3AF",
-            borderBottom: `2px solid ${tab === t ? "#2563EB" : "transparent"}`,
+            color: tab === t ? C.orange : C.gray500,
+            borderBottom: `2px solid ${tab === t ? C.orange : "transparent"}`,
             fontWeight: tab === t ? 700 : 400, letterSpacing: "0.04em",
           }}>{label}</button>
         ))}
@@ -511,15 +526,17 @@ export default function PenguinClaw() {
             <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
               {messages.length === 0 ? (
                 <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px" }}>
-                  <PenguinMark size={56} color="#2563EB" glow />
-                  <div style={{ color: "#1A1A2E", fontSize: "15px", fontWeight: 800, letterSpacing: "0.12em", fontFamily: "'Space Grotesk',sans-serif" }}>PENGUINCLAW</div>
+                  <PenguinMark size={56} glow />
+                  <div style={{ color: C.black, fontSize: "15px", fontWeight: 800, letterSpacing: "0.12em", fontFamily: "'Space Grotesk',sans-serif" }}>
+                    PENGUIN<span style={{ color: C.orange }}>CLAW</span>
+                  </div>
                   {!health.fetch_ok || health.ai_configured ? (
-                    <div style={{ color: "#9CA3AF", fontSize: "11px", textAlign: "center", maxWidth: "200px", lineHeight: 1.6 }}>
+                    <div style={{ color: C.gray500, fontSize: "11px", textAlign: "center", maxWidth: "200px", lineHeight: 1.6 }}>
                       The AI that actually builds.
                     </div>
                   ) : (
                     <div style={{ width: "240px" }}>
-                      <div style={{ color: "#6B7280", fontSize: "11px", textAlign: "center", marginBottom: "12px", lineHeight: 1.5 }}>
+                      <div style={{ color: C.gray500, fontSize: "11px", textAlign: "center", marginBottom: "12px", lineHeight: 1.5 }}>
                         Choose your AI provider to get started.
                       </div>
                       <SettingsForm onSaved={() => setHealth(p => ({ ...p, ai_configured: true }))} />
@@ -532,11 +549,13 @@ export default function PenguinClaw() {
                   {isTyping && (
                     <div style={{ display: "flex", flexDirection: "column", gap: "2px", padding: "6px 0" }}>
                       <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-                        <PenguinMark size={16} color="#2563EB" />
-                        {[0,1,2].map(i => <div key={i} style={{ width: 4, height: 4, borderRadius: "50%", background: "#2563EB", animation: `dotBounce 0.8s ease-in-out ${i*0.15}s infinite` }} />)}
+                        <div style={{ width: 22, height: 22, borderRadius: "50%", background: C.black, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${C.orangeBorder}` }}>
+                          <PenguinMark size={14} />
+                        </div>
+                        {[0,1,2].map(i => <div key={i} style={{ width: 4, height: 4, borderRadius: "50%", background: C.orange, animation: `dotBounce 0.8s ease-in-out ${i*0.15}s infinite` }} />)}
                       </div>
                       {visionActive && (
-                        <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", color: "#9333EA", paddingLeft: "2px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "10px", color: C.purple, paddingLeft: "2px" }}>
                           <span style={{ animation: "eyeBlink 2s ease-in-out infinite", display: "inline-block" }}>👁</span>
                           <span>vision</span>
                         </div>
@@ -549,16 +568,16 @@ export default function PenguinClaw() {
             </div>
 
             {/* Input */}
-            <div style={{ borderTop: "1px solid #E5E2DB", background: "#FFFFFF", flexShrink: 0 }}>
+            <div style={{ borderTop: `1px solid ${C.gray300}`, background: C.white, flexShrink: 0 }}>
               {turnStats.turn > 0 && (
-                <div style={{ fontSize: "9px", color: "#D1D5DB", textAlign: "center", paddingTop: "3px" }}>
+                <div style={{ fontSize: "9px", color: C.gray300, textAlign: "center", paddingTop: "3px" }}>
                   Turn {turnStats.turn}
                   {turnStats.outputTokens > 0 && ` · ~$${((turnStats.inputTokens * 0.00000025 + turnStats.outputTokens * 0.00000125)).toFixed(4)}`}
                 </div>
               )}
               <div style={{ padding: "8px 10px", display: "flex", gap: "6px", alignItems: "flex-end" }}>
                 <textarea
-                  style={{ flex: 1, background: "#F7F6F2", border: "1px solid #E5E2DB", borderRadius: "8px", padding: "8px 10px", color: "#1A1A2E", fontSize: "12px", fontFamily: "inherit", outline: "none", resize: "none", minHeight: "36px", maxHeight: "90px", lineHeight: 1.5 }}
+                  style={{ flex: 1, background: C.offWhite, border: `1px solid ${C.gray300}`, borderRadius: "8px", padding: "8px 10px", color: C.black, fontSize: "12px", fontFamily: "inherit", outline: "none", resize: "none", minHeight: "36px", maxHeight: "90px", lineHeight: 1.5 }}
                   placeholder="Ask PenguinClaw…"
                   value={input}
                   onChange={e => setInput(e.target.value)}
@@ -566,11 +585,11 @@ export default function PenguinClaw() {
                   rows={1}
                 />
                 {isTyping ? (
-                  <button onClick={stopGeneration} style={{ background: "#DC2626", border: "none", borderRadius: "7px", padding: "8px 12px", color: "#fff", cursor: "pointer", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>■ Stop</button>
+                  <button onClick={stopGeneration} style={{ background: C.red, border: "none", borderRadius: "7px", padding: "8px 12px", color: C.white, cursor: "pointer", fontSize: "12px", fontWeight: 700, flexShrink: 0 }}>■ Stop</button>
                 ) : (
-                  <button onClick={sendMessage} style={{ background: "linear-gradient(135deg,#2563EB,#1D4ED8)", border: "none", borderRadius: "7px", padding: "8px 12px", color: "#fff", cursor: "pointer", fontSize: "14px", fontWeight: 700, flexShrink: 0 }}>↑</button>
+                  <button onClick={sendMessage} style={{ background: `linear-gradient(135deg, ${C.orange}, ${C.orangeDim})`, border: "none", borderRadius: "7px", padding: "8px 12px", color: C.white, cursor: "pointer", fontSize: "14px", fontWeight: 700, flexShrink: 0 }}>↑</button>
                 )}
-                <button onClick={() => { setMessages([]); setHistory([]); setTurnStats({ turn: 0, inputTokens: 0, outputTokens: 0 }); }} title="Clear conversation" style={{ background: "none", border: "1px solid #E5E2DB", borderRadius: "7px", padding: "8px 10px", color: "#9CA3AF", cursor: "pointer", fontSize: "12px", flexShrink: 0 }}>✕</button>
+                <button onClick={() => { setMessages([]); setHistory([]); setTurnStats({ turn: 0, inputTokens: 0, outputTokens: 0 }); }} title="Clear conversation" style={{ background: "none", border: `1px solid ${C.gray300}`, borderRadius: "7px", padding: "8px 10px", color: C.gray500, cursor: "pointer", fontSize: "12px", flexShrink: 0 }}>✕</button>
               </div>
             </div>
           </>)}
@@ -579,15 +598,15 @@ export default function PenguinClaw() {
           {tab === "tools" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "10px" }}>
               {tools.length === 0 ? (
-                <div style={{ color: "#9CA3AF", fontSize: "12px", textAlign: "center", marginTop: "40px" }}>No tools loaded yet.</div>
+                <div style={{ color: C.gray500, fontSize: "12px", textAlign: "center", marginTop: "40px" }}>No tools loaded yet.</div>
               ) : tools.map(t => {
                 const cat = inferCategory(t.category, t.name);
-                const c = catColor(cat);
+                const c   = catColor(cat);
                 const isSummary = t.category === "rhino" || t.category === "grasshopper";
                 return (
-                  <div key={t.name} style={{ padding: "7px 10px", marginBottom: "4px", borderRadius: "6px", background: "#FFFFFF", border: `1px solid ${c}${isSummary ? "33" : "18"}`, borderLeft: isSummary ? `3px solid ${c}` : `1px solid ${c}18` }}>
+                  <div key={t.name} style={{ padding: "7px 10px", marginBottom: "4px", borderRadius: "6px", background: C.white, border: `1px solid rgba(0,0,0,0.07)`, borderLeft: isSummary ? `3px solid ${c}` : `1px solid rgba(0,0,0,0.07)` }}>
                     <div style={{ fontSize: "11px", fontFamily: "monospace", color: c, fontWeight: 600 }}>{t.name}</div>
-                    {t.description && <div style={{ fontSize: "10px", color: "#9CA3AF", marginTop: "2px", lineHeight: 1.4 }}>{t.description}</div>}
+                    {t.description && <div style={{ fontSize: "10px", color: C.gray500, marginTop: "2px", lineHeight: 1.4 }}>{t.description}</div>}
                   </div>
                 );
               })}
@@ -597,7 +616,7 @@ export default function PenguinClaw() {
           {/* Settings tab */}
           {tab === "settings" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
-              <div style={{ color: "#9CA3AF", fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "12px" }}>AI Provider</div>
+              <div style={{ color: C.gray500, fontSize: "10px", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "12px" }}>AI Provider</div>
               <SettingsForm onSaved={provider => {
                 setHealth(p => ({ ...p, ai_configured: true, provider }));
                 setTab("chat");
@@ -608,28 +627,29 @@ export default function PenguinClaw() {
 
         {/* ── Sidebar ── */}
         {sidebarOpen && (
-          <div style={{ width: "160px", borderLeft: "1px solid #E5E2DB", background: "#FFFFFF", display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
-            <div style={{ padding: "8px", borderBottom: "1px solid #E5E2DB", fontSize: "9px", color: "#9CA3AF", letterSpacing: "0.1em", textTransform: "uppercase" }}>Status</div>
-            <div style={{ padding: "8px", fontSize: "9px", lineHeight: 2, color: "#9CA3AF", borderBottom: "1px solid #E5E2DB" }}>
+          <div style={{ width: "160px", borderLeft: `1px solid ${C.gray300}`, background: C.white, display: "flex", flexDirection: "column", flexShrink: 0, overflow: "hidden" }}>
+            <div style={{ padding: "8px", borderBottom: `1px solid ${C.gray300}`, fontSize: "9px", color: C.gray500, letterSpacing: "0.1em", textTransform: "uppercase" }}>Status</div>
+            <div style={{ padding: "8px", fontSize: "9px", lineHeight: 2, color: C.gray500, borderBottom: `1px solid ${C.gray300}` }}>
               {[
                 ["Server",      health.fetch_ok,         false],
-                ["Rhino",       health.rhino_connected,   !health.fetch_ok],
-                ["Document",    health.document_open,     !health.fetch_ok],
-                [providerLabel, health.ai_configured,     !health.fetch_ok],
+                ["Rhino",       health.rhino_connected,  !health.fetch_ok],
+                ["Document",    health.document_open,    !health.fetch_ok],
+                [providerLabel, health.ai_configured,    !health.fetch_ok],
               ].map(([label, ok, unknown]) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                   <div style={dot(ok, unknown)} />
-                  <span style={{ color: unknown ? "#D1D5DB" : ok ? "#059669" : "#DC2626" }}>{label}</span>
+                  <span style={{ color: unknown ? C.gray300 : ok ? C.green : C.red }}>{label}</span>
                 </div>
               ))}
-              {health.document && <div style={{ color: "#D1D5DB", marginTop: "4px", wordBreak: "break-all" }}>{health.document}</div>}
+              {health.document && <div style={{ color: C.gray300, marginTop: "4px", wordBreak: "break-all" }}>{health.document}</div>}
             </div>
             <div style={{ padding: "8px 6px", flex: 1, overflowY: "auto", fontSize: "9px" }}>
-              <div style={{ color: "#9CA3AF", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "6px", padding: "0 2px" }}>Tools</div>
+              <div style={{ color: C.gray500, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "6px", padding: "0 2px" }}>Tools</div>
               {tools.map(t => {
                 const cat = inferCategory(t.category, t.name);
+                const c   = catColor(cat);
                 return (
-                  <div key={t.name} style={{ padding: "3px 6px", marginBottom: "1px", borderRadius: "3px", color: catColor(cat), fontFamily: "monospace", fontSize: "9px", background: `${catColor(cat)}10` }}>
+                  <div key={t.name} style={{ padding: "3px 6px", marginBottom: "1px", borderRadius: "3px", color: c, fontFamily: "monospace", fontSize: "9px", background: `${c}14` }}>
                     {t.name}
                   </div>
                 );

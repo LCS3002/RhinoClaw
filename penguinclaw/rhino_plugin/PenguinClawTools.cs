@@ -177,6 +177,37 @@ namespace PenguinClaw
                 },
                 new JObject
                 {
+                    ["name"]        = "get_scene_layout",
+                    ["description"] = "Returns every object in the scene with its ID, type, name, layer, bounding_box [xmin,ymin,zmin,xmax,ymax,zmax] and center point. " +
+                                      "Use this before any spatial placement task (\"put X on Y\", \"next to\", \"above\") to know exactly where existing objects are. " +
+                                      "Much faster than calling get_object_info repeatedly.",
+                    ["input_schema"] = new JObject { ["type"] = "object", ["properties"] = new JObject(), ["required"] = new JArray() },
+                },
+                new JObject
+                {
+                    ["name"]        = "place_object",
+                    ["description"] = "Moves an object so that a chosen anchor point of its bounding box lands at the target coordinates. " +
+                                      "anchor: 'base' = bottom-center (use to sit something on a surface), " +
+                                      "'center' = geometric center, 'min' = bbox min corner. " +
+                                      "target_x/y/z: the world coordinates the anchor should land on. " +
+                                      "Omit axes you don't want to change (they stay as-is). " +
+                                      "Example: place_object(id, anchor='base', target_z=2.5) lifts the object so its base is exactly at Z=2.5.",
+                    ["input_schema"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["object_id"] = new JObject { ["type"] = "string",  ["description"] = "GUID of the object to move." },
+                            ["anchor"]    = new JObject { ["type"] = "string",  ["description"] = "'base' (bottom-center), 'center', or 'min' (bbox min corner). Default: 'base'." },
+                            ["target_x"]  = new JObject { ["type"] = "number",  ["description"] = "Target world X. Omit to leave X unchanged." },
+                            ["target_y"]  = new JObject { ["type"] = "number",  ["description"] = "Target world Y. Omit to leave Y unchanged." },
+                            ["target_z"]  = new JObject { ["type"] = "number",  ["description"] = "Target world Z. Omit to leave Z unchanged." },
+                        },
+                        ["required"] = new JArray { "object_id" },
+                    },
+                },
+                new JObject
+                {
                     ["name"]        = "delete_object",
                     ["description"] = "Deletes a Rhino object by ID. Supports Ctrl+Z undo.",
                     ["input_schema"] = new JObject
@@ -645,6 +676,9 @@ case "list_gh_sliders":      return ListGhSliders();
                                                   input["solve"]?.ToObject<bool>() ?? true,
                                                   input["clear_canvas"]?.ToObject<bool>() ?? false);
                 case "capture_and_assess":    return CaptureAndAssess(S(input, "prompt"));
+                case "get_scene_layout":      return GetSceneLayout();
+                case "place_object":          return PlaceObject(S(input, "object_id"), S(input, "anchor"),
+                                                  input["target_x"], input["target_y"], input["target_z"]);
                 case "solve_gh_definition":   return SolveGhDefinition();
                 case "bake_gh_definition":    return BakeGhDefinition(
                                                   S(input, "layer_name"),
@@ -744,6 +778,97 @@ case "list_gh_sliders":      return ListGhSliders();
                     "area",         Math.Round(ap?.Area   ?? 0, 4),
                     "bounding_box", new JArray { bb.Min.X, bb.Min.Y, bb.Min.Z, bb.Max.X, bb.Max.Y, bb.Max.Z }
                 );
+            });
+        }
+
+        private static string GetSceneLayout()
+        {
+            return OnMain(() =>
+            {
+                var doc = RhinoDoc.ActiveDoc;
+                if (doc == null) return new JObject { ["success"] = false, ["message"] = "No active document." };
+
+                var objects = new JArray();
+                foreach (var obj in doc.Objects.GetObjectList(Rhino.DocObjects.ObjectType.AnyObject))
+                {
+                    if (obj.IsDeleted || obj.Geometry == null) continue;
+                    var bb  = obj.Geometry.GetBoundingBox(true);
+                    if (!bb.IsValid) continue;
+                    var ctr = bb.Center;
+                    objects.Add(new JObject
+                    {
+                        ["id"]     = obj.Id.ToString(),
+                        ["type"]   = obj.Geometry.GetType().Name,
+                        ["name"]   = obj.Attributes.Name ?? "",
+                        ["layer"]  = doc.Layers[obj.Attributes.LayerIndex].Name,
+                        ["bbox"]   = new JArray {
+                            Math.Round(bb.Min.X, 3), Math.Round(bb.Min.Y, 3), Math.Round(bb.Min.Z, 3),
+                            Math.Round(bb.Max.X, 3), Math.Round(bb.Max.Y, 3), Math.Round(bb.Max.Z, 3),
+                        },
+                        ["center"] = new JArray {
+                            Math.Round(ctr.X, 3), Math.Round(ctr.Y, 3), Math.Round(ctr.Z, 3),
+                        },
+                    });
+                }
+                return new JObject
+                {
+                    ["success"] = true,
+                    ["count"]   = objects.Count,
+                    ["objects"] = objects,
+                };
+            });
+        }
+
+        private static string PlaceObject(string objectId, string anchor, JToken tx, JToken ty, JToken tz)
+        {
+            if (string.IsNullOrEmpty(objectId)) return Fail("object_id is required.");
+            return OnMain(() =>
+            {
+                var doc = RhinoDoc.ActiveDoc;
+                if (doc == null) return new JObject { ["success"] = false, ["message"] = "No active document." };
+                if (!Guid.TryParse(objectId, out var guid))
+                    return new JObject { ["success"] = false, ["message"] = "Invalid GUID." };
+                var obj = doc.Objects.Find(guid);
+                if (obj == null) return new JObject { ["success"] = false, ["message"] = "Object not found." };
+
+                var bb = obj.Geometry.GetBoundingBox(true);
+                if (!bb.IsValid) return new JObject { ["success"] = false, ["message"] = "Bounding box invalid." };
+
+                // Determine the current anchor point
+                Point3d anchorPt;
+                switch ((anchor ?? "base").ToLower())
+                {
+                    case "center": anchorPt = bb.Center; break;
+                    case "min":    anchorPt = bb.Min;    break;
+                    default: // "base" — bottom center
+                        anchorPt = new Point3d((bb.Min.X + bb.Max.X) / 2.0,
+                                               (bb.Min.Y + bb.Max.Y) / 2.0,
+                                               bb.Min.Z);
+                        break;
+                }
+
+                double dx = tx != null ? (tx.ToObject<double>() - anchorPt.X) : 0.0;
+                double dy = ty != null ? (ty.ToObject<double>() - anchorPt.Y) : 0.0;
+                double dz = tz != null ? (tz.ToObject<double>() - anchorPt.Z) : 0.0;
+
+                if (Math.Abs(dx) < 1e-9 && Math.Abs(dy) < 1e-9 && Math.Abs(dz) < 1e-9)
+                    return new JObject { ["success"] = true, ["message"] = "Object already at target position." };
+
+                uint sn   = doc.BeginUndoRecord("PenguinClaw: place_object");
+                var  xform = Transform.Translation(dx, dy, dz);
+                var  newId = doc.Objects.Transform(guid, xform, true);
+                doc.EndUndoRecord(sn);
+                doc.Views.Redraw();
+
+                if (newId == Guid.Empty)
+                    return new JObject { ["success"] = false, ["message"] = "Transform failed." };
+
+                return new JObject
+                {
+                    ["success"] = true,
+                    ["message"] = $"Placed {objectId} (anchor={anchor ?? "base"}) at ({tx},{ty},{tz}), moved by ({Math.Round(dx,3)},{Math.Round(dy,3)},{Math.Round(dz,3)}).",
+                    ["new_id"]  = newId.ToString(),
+                };
             });
         }
 
@@ -1111,6 +1236,9 @@ case "list_gh_sliders":      return ListGhSliders();
             });
         }
 
+        // GUID of the IronPython 2 plugin — must be loaded before PythonScript.Create()
+        private static readonly Guid IronPythonPluginId = new Guid("814d908a-e25c-493d-97e9-ee3861957f49");
+
         private static string ExecutePythonCode(string code)
         {
             if (string.IsNullOrWhiteSpace(code)) return Fail("code is required.");
@@ -1119,47 +1247,92 @@ case "list_gh_sliders":      return ListGhSliders();
                 var doc = RhinoDoc.ActiveDoc;
                 if (doc == null) return new JObject { ["success"] = false, ["message"] = "No active Rhino document." };
 
+                // Ensure IronPython plugin is loaded — Create() returns null without it
+                try { Rhino.PlugIns.PlugIn.LoadPlugIn(IronPythonPluginId.ToString(), out _); }
+                catch { /* non-fatal — try anyway */ }
+
                 Rhino.Runtime.PythonScript py;
                 try { py = Rhino.Runtime.PythonScript.Create(); }
-                catch (Exception ex) { return new JObject { ["success"] = false, ["message"] = $"Python engine unavailable: {ex.Message}" }; }
-                if (py == null) return new JObject { ["success"] = false, ["message"] = "Python engine returned null." };
+                catch (Exception ex)
+                {
+                    return new JObject
+                    {
+                        ["success"] = false,
+                        ["message"] = "Python engine unavailable — ensure the IronPython plugin is installed in Rhino 8.",
+                        ["detail"]  = ex.Message,
+                    };
+                }
+                if (py == null)
+                    return new JObject
+                    {
+                        ["success"] = false,
+                        ["message"] = "Python engine returned null. The IronPython plugin may not be installed or enabled.",
+                    };
 
-                // Normalise line endings — CRLF from JSON causes SyntaxError in the Python parser
+                // Normalise line endings — CRLF in JSON causes SyntaxError in IronPython
                 code = code.Replace("\r\n", "\n").Replace("\r", "\n");
 
                 var output = new StringBuilder();
+                // Capture both normal output and errors from the script
                 py.Output = s => output.Append(s);
                 py.SetVariable("doc", doc);
 
                 bool ok;
-                string errorMsg = null;
+                string errorMsg  = null;
+                string traceback = null;
                 try
                 {
                     ok = py.ExecuteScript(code);
                     if (!ok)
                     {
-                        // PythonScript stores errors in properties, not exceptions
+                        // Extract structured error info via reflection (IronPython engine stores it as properties)
                         try
                         {
-                            var t = py.GetType();
+                            var t  = py.GetType();
                             var em = t.GetProperty("ErrorMessage")?.GetValue(py)?.ToString();
                             var et = t.GetProperty("ErrorType")?.GetValue(py)?.ToString();
-                            errorMsg = string.IsNullOrEmpty(em) ? et : (string.IsNullOrEmpty(et) ? em : $"{et}: {em}");
+                            var el = t.GetProperty("ErrorLineNumber")?.GetValue(py);
+                            var tb = t.GetProperty("Traceback")?.GetValue(py)?.ToString();
+
+                            if (!string.IsNullOrEmpty(tb)) traceback = tb;
+
+                            if (!string.IsNullOrEmpty(em) || !string.IsNullOrEmpty(et))
+                            {
+                                errorMsg = string.IsNullOrEmpty(et) ? em
+                                         : string.IsNullOrEmpty(em) ? et
+                                         : $"{et}: {em}";
+                                if (el != null) errorMsg += $" (line {el})";
+                            }
+                            else
+                            {
+                                errorMsg = "Script returned false — check syntax. Note: this engine is IronPython 2. "
+                                         + "Avoid f-strings (use .format()), walrus operator :=, and Python 3-only syntax.";
+                            }
                         }
-                        catch { errorMsg = "execution failed"; }
+                        catch
+                        {
+                            errorMsg = "Execution failed. Note: engine is IronPython 2 — avoid f-strings, use str.format() instead.";
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    ok = false;
+                    ok       = false;
                     errorMsg = ex.Message;
+                    // Include inner exception which often has the actual Python traceback
+                    if (ex.InnerException != null)
+                        traceback = ex.InnerException.ToString();
                 }
 
                 doc.Views.Redraw();
 
-                var result = Obj("executed", ok, "output", output.ToString().TrimEnd());
-                if (!string.IsNullOrEmpty(errorMsg)) result["error"] = errorMsg;
-                if (!ok) result["success"] = false;
+                var result = new JObject
+                {
+                    ["success"] = ok,
+                    ["output"]  = output.ToString().TrimEnd(),
+                };
+                if (!string.IsNullOrEmpty(errorMsg))  result["error"]     = errorMsg;
+                if (!string.IsNullOrEmpty(traceback)) result["traceback"] = traceback;
                 return result;
             });
         }
