@@ -112,7 +112,7 @@ See [AGENTS.md](AGENTS.md) for a full technical reference.
 2. Open a terminal and run: `ollama pull qwen2.5:7b` (~4.7 GB download)
 3. In PenguinClaw → **Settings** tab → select **Ollama** → **Save & Connect**
 
-For complex multi-step tasks (Grasshopper definition building, boolean chains), Anthropic's Claude gives the most reliable results. See [AGENTS.md](AGENTS.md#tool-calling-reliability-anthropic-vs-groq-vs-ollama) for a detailed comparison.
+For complex multi-step tasks (Grasshopper definition building, boolean chains), Anthropic gives the most reliable results. See [AGENTS.md](AGENTS.md#tool-calling-reliability-anthropic-vs-groq-vs-ollama) for a detailed comparison.
 
 ---
 

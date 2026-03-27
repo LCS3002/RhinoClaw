@@ -52,16 +52,24 @@ namespace PenguinClaw
             "- Set color:    set_object_color(object_id, r, g, b) — values 0–255\n" +
             "- Rename:       rename_object(object_id, name)\n\n" +
 
-            "## Creating geometry\n" +
-            "- Use run_rhino_command with underscore-prefixed English commands. Coordinates: no spaces, e.g. 0,0,0\n" +
-            "- Box:      '_Box 0,0,0 10,10,0 10'  (corner, diag-x/y, height)\n" +
-            "- Sphere:   '_Sphere 0,0,0 5'\n" +
-            "- Cylinder: '_Cylinder 0,0,0 3 10'  (center, radius, height)\n" +
-            "- Cone:     '_Cone 0,0,0 5 10'\n" +
-            "- Torus:    '_Torus 0,0,0 10 2'\n" +
-            "- Line:     '_Line 0,0,0 10,0,0'\n" +
-            "- Circle:   '_Circle 0,0,0 5'\n" +
-            "- For Loft/Sweep/Extrude/Revolve: draw curves first, then select them before running the surface command.\n\n" +
+            "## Creating geometry — ALWAYS use execute_python_code with rhinoscriptsyntax\n" +
+            "- For ALL geometry creation (shapes, objects, colours), ALWAYS use execute_python_code with rhinoscriptsyntax.\n" +
+            "- rhinoscriptsyntax returns object IDs directly, lets you set colour immediately, and chains naturally.\n" +
+            "- Sphere:   id = rs.AddSphere((0,0,0), 5)\n" +
+            "- Cylinder: id = rs.AddCylinder((0,0,0), 10, 3)    # base_center, height, radius\n" +
+            "- Cone:     id = rs.AddCone((0,0,0), 10, 5)         # base_center, height, radius\n" +
+            "- Torus:    id = rs.AddTorus((0,0,0), 10, 2)\n" +
+            "- Line:     id = rs.AddLine((0,0,0), (10,0,0))\n" +
+            "- Circle:   id = rs.AddCircle((0,0,0), 5)\n" +
+            "- Box (axis-aligned, from min to max corner):\n" +
+            "  p0=(0,0,0); p1=(10,10,10)\n" +
+            "  corners=[(p0[0],p0[1],p0[2]),(p1[0],p0[1],p0[2]),(p1[0],p1[1],p0[2]),(p0[0],p1[1],p0[2]),\n" +
+            "           (p0[0],p0[1],p1[2]),(p1[0],p0[1],p1[2]),(p1[0],p1[1],p1[2]),(p0[0],p1[1],p1[2])]\n" +
+            "  id = rs.AddBox(corners)\n" +
+            "- Set colour right after creation: rs.ObjectColor(id, (255, 140, 0))\n" +
+            "- Always print() the ID so it appears in output: print('id: ' + str(id))\n" +
+            "- Only use run_rhino_command for surface ops that rhinoscriptsyntax cannot handle:\n" +
+            "  Loft, Sweep1, FilletEdge, Revolve, ExtrudeCrv, Cap, Shell, Rebuild\n\n" +
 
             "## Boolean operations — use dedicated tools (handle selection automatically)\n" +
             "- boolean_union(object_ids[])                        — merge into one solid\n" +
@@ -98,17 +106,22 @@ namespace PenguinClaw
             "- Build bottom-up: feet → body → head → details (eyes, beak, fins, etc.).\n" +
             "- After every 4–5 tool calls on a complex model, call capture_and_assess to verify shape and proportions.\n" +
             "- Use specific colours per part as you go — do not leave all colouring to the end.\n" +
-            "- Prefer primitives (Box, Sphere, Cylinder, Cone) over Python for geometric shapes.\n\n" +
+            "- Use execute_python_code with rhinoscriptsyntax for all primitives (AddSphere, AddCylinder, AddCone, AddBox).\n\n" +
 
             "## Visual verification\n" +
             "- After completing significant modeling steps (boolean operations, complex geometry creation), call capture_and_assess to visually verify the result.\n" +
             "- Use capture_and_assess when the user asks 'how does it look', 'check the result', or 'is that right?'\n\n" +
 
-            "## run_rhino_command is for geometry creation and commands without a dedicated tool\n" +
-            "(e.g. Loft, Sweep1, FilletEdge, Revolve, ExtrudeCrv, Cap, Shell, Fillet, Rebuild).\n" +
-            "Do NOT use run_rhino_command for: Move, Scale, Rotate, Delete, Mirror, Array, Boolean operations,\n" +
-            "layer management, or colour — all of those have dedicated tools above that are typed and undo-safe.\n\n" +
-            "## execute_python_code — use for bulk/complex operations\n" +
+            "## run_rhino_command — use ONLY for views, selections, and advanced surface ops\n" +
+            "- View/display: _Zoom, _Pan, _SetView, _Plan, _Perspective, _Show, _Hide, _Lock\n" +
+            "- Selection: _SelAll, _SelNone, _Invert, _SelLayer, _SelName\n" +
+            "- Advanced surface ops with no rhinoscriptsyntax equivalent: Loft, Sweep1, FilletEdge, Revolve, ExtrudeCrv, Cap, Shell, Fillet, Rebuild\n" +
+            "- Do NOT use run_rhino_command for creating geometry — use execute_python_code instead.\n" +
+            "- Do NOT use run_rhino_command for: Move, Scale, Rotate, Delete, Mirror, Array, Boolean,\n" +
+            "  colour, or layer assignment — all of those have dedicated tools or can be done via Python.\n\n" +
+            "## execute_python_code — PRIMARY tool for geometry creation and complex operations\n" +
+            "- Geometry creation: ALWAYS use rhinoscriptsyntax (rs.AddBox, rs.AddSphere, rs.AddCylinder, rs.AddCone, etc.)\n" +
+            "- Colour: rs.ObjectColor(id, (r, g, b)) — set immediately after creation\n" +
             "- Bulk operations (create 20+ objects, iterate over selection, parametric geometry)\n" +
             "- Anything requiring loops, conditionals, or math\n" +
             "- Loft/Sweep/Extrude/Revolve on specific curve IDs\n" +

@@ -29,7 +29,7 @@ Tools live in `PenguinClawTools.cs`. Each tool needs three things:
 new JObject
 {
     ["name"]        = "my_tool",
-    ["description"] = "Does something specific and useful. Be descriptive — Claude uses this to pick the right tool.",
+    ["description"] = "Does something specific and useful. Be descriptive — the agent uses this to pick the right tool.",
     ["input_schema"] = new JObject
     {
         ["type"] = "object",
@@ -62,7 +62,7 @@ private static string MyTool(string param)
 }
 ```
 
-> **Tool descriptions matter.** Claude uses them to decide which tool to call. Be specific about what the tool does and *when* to use it.
+> **Tool descriptions matter.** The agent uses them to decide which tool to call. Be specific about what the tool does and *when* to use it.
 
 ---
 

@@ -11,7 +11,7 @@ namespace PenguinClaw
     /// <summary>
     /// Persistent action log — survives Rhino restarts.
     /// Every tool call that creates, modifies, or deletes objects is recorded to disk.
-    /// The last N entries are injected into the system prompt so Claude has full session history.
+    /// The last N entries are injected into the system prompt so the agent has full session history.
     /// </summary>
     internal static class PenguinClawActionLog
     {

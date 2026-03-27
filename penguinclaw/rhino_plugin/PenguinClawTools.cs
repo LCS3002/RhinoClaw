@@ -153,10 +153,10 @@ namespace PenguinClaw
                 new JObject
                 {
                     ["name"]        = "run_rhino_command",
-                    ["description"] = "Runs any Rhino command string exactly as if typed in the Rhino command line. " +
-                                      "Use standard Rhino command syntax with underscore prefix for English commands (e.g. '_Box 0,0,0 10,10,10', '_Sphere 0,0,0 5', '_Delete', '_Move', '_Layer'). " +
-                                      "Supports all built-in Rhino commands and any loaded plugin commands. " +
-                                      "For commands that need object selection, call get_selected_objects first to confirm what is selected. " +
+                    ["description"] = "Runs a Rhino command string exactly as if typed in the Rhino command line. " +
+                                      "Use for view/layer/selection commands and advanced surface ops (Loft, Sweep1, FilletEdge, Revolve, ExtrudeCrv, Cap, Shell, Rebuild). " +
+                                      "NOT for creating geometry — use execute_python_code with rhinoscriptsyntax instead (rs.AddSphere, rs.AddBox, rs.AddCylinder, etc.). " +
+                                      "For commands that need object selection, call get_selected_objects first. " +
                                       "Returns success/failure and any output text from the command.",
                     ["input_schema"] = new JObject
                     {
@@ -294,11 +294,12 @@ namespace PenguinClaw
                 new JObject
                 {
                     ["name"]        = "execute_python_code",
-                    ["description"] = "Executes arbitrary Python code inside Rhino. The variable 'doc' is pre-set to the active RhinoDocument. " +
-                                      "Use 'import rhinoscriptsyntax as rs' for high-level operations. " +
-                                      "Use 'import Rhino' for RhinoCommon. " +
-                                      "Use print() to return output. " +
-                                      "This is your most powerful tool — use it for complex geometry, bulk operations, or anything that would require many individual tool calls.",
+                    ["description"] = "PRIMARY tool for geometry creation and complex operations. " +
+                                      "ALWAYS use this (not run_rhino_command) to create geometry: rs.AddSphere, rs.AddBox, rs.AddCylinder, rs.AddCone, rs.AddTorus, rs.AddLine, rs.AddCircle, etc. " +
+                                      "Set colour immediately: rs.ObjectColor(id, (255, 140, 0)). " +
+                                      "The variable 'doc' is pre-set to the active RhinoDocument. " +
+                                      "Use 'import rhinoscriptsyntax as rs' for high-level operations; 'import Rhino' for RhinoCommon. " +
+                                      "Always print() the resulting IDs so they appear in output.",
                     ["input_schema"] = new JObject
                     {
                         ["type"] = "object",
@@ -1076,7 +1077,13 @@ case "list_gh_sliders":      return ListGhSliders();
                 var beforeIds = new HashSet<Guid>(
                     doc.Objects.Where(o => !o.IsDeleted).Select(o => o.Id));
 
-                bool ok = RhinoApp.RunScript(command, echo);
+                // Append _Enter if not already present to prevent commands from hanging
+                var cmd = command.TrimEnd();
+                if (!cmd.EndsWith("_Enter", StringComparison.OrdinalIgnoreCase) &&
+                    !cmd.EndsWith(" Enter", StringComparison.OrdinalIgnoreCase) &&
+                    !cmd.EndsWith("\n"))
+                    cmd = cmd + " _Enter";
+                bool ok = RhinoApp.RunScript(cmd, echo);
                 doc.Views.Redraw();
 
                 var result = new JObject

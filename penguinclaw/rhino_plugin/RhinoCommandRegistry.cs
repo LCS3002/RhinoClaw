@@ -9,7 +9,7 @@ using Rhino;
 namespace PenguinClaw
 {
     /// <summary>
-    /// Caches every Rhino command and GH component as an individual Claude tool definition.
+    /// Caches every Rhino command and GH component as an individual tool definition.
     /// Built once on startup (background thread), refreshed when plugins load.
     /// Per request, GetRelevantTools() returns the top-K most relevant entries via keyword matching.
     /// </summary>
@@ -276,7 +276,7 @@ namespace PenguinClaw
             return new CachedTool { Definition = def, Keywords = Tokenize(keywords) };
         }
 
-        /// <summary>Produce a safe Claude tool name (a-z, A-Z, 0-9, _, max 64 chars).</summary>
+        /// <summary>Produce a safe tool name (a-z, A-Z, 0-9, _, max 64 chars).</summary>
         private static string ToolName(string prefix, string raw)
         {
             var s    = new string(raw.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray()).Trim('_');

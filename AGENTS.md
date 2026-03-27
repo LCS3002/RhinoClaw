@@ -11,7 +11,7 @@ Rhino 8 ships with 980+ built-in commands. A naive approach would define a separ
 1. **Context window cost.** Each tool definition takes ~30–80 tokens. 72 tools = ~4,000 tokens per request — before the user's message, history, or tool results.
 2. **Prompt cache fragility.** Anthropic's ephemeral cache breaks if the tool list changes between requests. Dynamic, per-request tool sets ruin caching.
 3. **Maintenance burden.** Every new Rhino command or third-party plugin command requires a new tool definition, parameter schema, and implementation.
-4. **LLM knowledge overlap.** Claude already knows Rhino command syntax from training data. `_Box 0,0,0 10,10,0 10` is not novel information.
+4. **LLM knowledge overlap.** The agent already knows Rhino command syntax from training data. `_Box 0,0,0 10,10,0 10` is not novel information.
 
 PenguinClaw instead exposes a single `run_rhino_command` tool that forwards any command string directly to `RhinoApp.RunScript()`. This gives the agent access to all 980+ Rhino commands (including third-party plugin commands) through one stable tool definition. The tool list stays small, the cache stays hot, and adding a new Rhino command requires zero code changes.
 
@@ -76,7 +76,7 @@ The GH registry (`RhinoCommandRegistry`) builds at plugin startup on a backgroun
 
 ```csharp
 CachedTool {
-    Definition:  JObject (Claude tool definition)
+    Definition:  JObject (tool definition)
     Keywords:    string[] (pre-tokenized name + category + subcategory + description)
 }
 ```
@@ -284,7 +284,7 @@ In `penguinclaw/ui/App.jsx`, add the provider name to the Settings tab's provide
 
 ## Tool-Calling Reliability: Anthropic vs Groq vs Ollama
 
-| | Anthropic (Claude) | Groq (Llama 3.3 70B) | Ollama (Qwen 2.5 7B) |
+| | Anthropic | Groq (Llama 3.3 70B) | Ollama (Qwen 2.5 7B) |
 |---|---|---|---|
 | **Parallel tool calls** | Reliable | Occasional misses | Rare |
 | **Nested JSON in args** | Correct | Usually correct | Sometimes flattened |
