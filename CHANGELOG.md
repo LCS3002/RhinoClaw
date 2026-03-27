@@ -9,6 +9,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.3.0] — 2026-03-27
+
+### Added
+
+#### Spatial Placement Tools
+- `get_scene_layout()` tool: returns every object in the scene with bounding box `[xmin,ymin,zmin,xmax,ymax,zmax]` and center point in a single call — replaces the need to call `get_object_info` for each object individually.
+- `place_object(object_id, anchor, target_x, target_y, target_z)` tool: moves an object so a chosen anchor point (`base`, `center`, or `min`) lands exactly at target coordinates. Eliminates guessed delta offsets for spatial placement tasks ("sit on top of", "next to", "above").
+- System prompt updated with spatial placement workflow: measure with `get_scene_layout()` → position with `place_object()`.
+- Table and stacked-object building guidelines added to system prompt.
+
+### Changed
+
+#### Python-first Geometry Workflow
+- Agent now uses `execute_python_code` with `rhinoscriptsyntax` as the **primary** path for all geometry creation (`rs.AddSphere`, `rs.AddBox`, `rs.AddCylinder`, `rs.AddCone`, `rs.AddTorus`, etc.). This returns object IDs directly and allows colour to be set in the same call via `rs.ObjectColor(id, (r, g, b))`.
+- `run_rhino_command` re-scoped to view/selection/navigation commands and advanced surface ops without a `rhinoscriptsyntax` equivalent (Loft, Sweep1, FilletEdge, Revolve, ExtrudeCrv, Cap, Shell, Rebuild).
+- `run_rhino_command` now auto-appends `_Enter` when not already present, preventing commands from hanging at an interactive prompt.
+- Tool descriptions updated to reflect the new role split.
+
+#### UI
+- Chat panel rebranded: dark background (`#0a0a0a`) with orange accent (`#FF6B00`), replacing the previous blue scheme.
+- PenguinMark SVG logo refreshed to match new colour palette.
+
+#### Vision History
+- `StripOldVisionImages()`: base64 image data is stripped from all but the most recent `capture_and_assess` turn in history, preventing token overflow across multi-capture sessions.
+
+---
+
 ## [0.2.0] — 2026-03-23
 
 ### Added
