@@ -87,7 +87,7 @@ namespace PenguinClaw
             "  COMPONENT TYPES:\n" +
             "    'slider' — number slider. Fields: value, min, max.\n" +
             "    'panel'  — text panel. Field: text.\n" +
-            "    'python3'— Python 3 script component. Fields: code (string), inputs (string[]), outputs (string[]). NOTE: may fail if Python 3 plugin not installed — check build result.\n" +
+            "    'python3'— Python 3 script component. Fields: code (string), inputs (string[]), outputs (string[]). NOTE: python3 components have exactly 2 wireable inputs — keep inputs array to max 2 items. Merge all parameters into at most 2 inputs, or hardcode extras in the script.\n" +
             "    'component' — built-in GH component by component_name (fuzzy matched). Reliable: 'Addition', 'Multiplication', 'Area', 'Volume', 'Loft', 'Extrude', 'Offset Curve', 'Sphere', 'Box', 'Circle', 'Cylinder', 'Plane', 'Point', 'Move', 'Scale'. Try these before python3.\n" +
             "    'sdk' — component by GUID. Field: guid.\n" +
             "  STRATEGY: (1) Try native component types first ('Sphere', 'Cylinder', 'Box', 'Move', 'Point') — wire sliders to their inputs. (2) If python3 is needed, call search_gh_components('Python') first to get exact name/GUID. (3) If python3 fails, fall back: create sliders only in GH, then use execute_python_code to read list_gh_sliders() values and build geometry in Rhino.\n" +
@@ -98,7 +98,8 @@ namespace PenguinClaw
             "    wires: [{\"from\":\"r\",\"to\":\"sph:1\"}]  (Sphere inputs: 0=Base plane, 1=Radius)\n" +
             "- search_gh_components(keyword) — search GH server by name (e.g. 'python', 'sphere'). Returns exact names + GUIDs. Call this FIRST if unsure of component_name.\n" +
             "- solve_gh_definition() — trigger recompute on active canvas\n" +
-            "- bake_gh_definition(layer_name) — bake all geometry to a named Rhino layer\n\n" +
+            "- bake_gh_definition(layer_name) — bake all geometry to a named Rhino layer\n" +
+            "IMPORTANT: after successfully building a GH definition that produces geometry, ALWAYS call bake_gh_definition immediately so the user can see the result in the Rhino viewport.\n\n" +
 
             "## Spatial placement — always measure, never guess\n" +
             "- Before placing any object relative to another, call get_scene_layout() to see all objects with bounding boxes.\n" +

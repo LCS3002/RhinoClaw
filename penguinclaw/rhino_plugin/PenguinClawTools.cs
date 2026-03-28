@@ -1836,6 +1836,24 @@ case "list_gh_sliders":      return ListGhSliders();
                 if (solve)
                     ghDoc.GetType().GetMethod("NewSolution", new[] { typeof(bool) })?.Invoke(ghDoc, new object[] { false });
 
+                // ── Zoom canvas to fit all new components ─────────────────────────
+                try
+                {
+                    var ghCanvas = instances?.GetProperty("ActiveCanvas", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                    if (ghCanvas != null)
+                    {
+                        var ct = ghCanvas.GetType();
+                        // Try ZoomFit() — centres and fits all objects in view
+                        var zoomFit = ct.GetMethod("ZoomFit", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null)
+                                   ?? ct.GetMethod("FrameAll", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+                        zoomFit?.Invoke(ghCanvas, null);
+                        // Force a canvas redraw
+                        ct.GetMethod("Refresh",    BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null)?.Invoke(ghCanvas, null);
+                        ct.GetMethod("Invalidate", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null)?.Invoke(ghCanvas, null);
+                    }
+                }
+                catch { }
+
                 var msg = $"Built GH definition: {compMap.Count}/{components.Count} components";
                 if (wires != null && wires.Count > 0)
                     msg += $", {wiresOk}/{wires.Count} wires connected";
@@ -2087,8 +2105,8 @@ case "list_gh_sliders":      return ListGhSliders();
                 if (codeProp != null)
                     codeProp.SetValue(comp, "#! python3\n" + code);
 
-                // Add custom input parameters (so wires can connect at the right indices)
-                // The python3 component starts with default x,y — we rename/add to match requested inputs
+                // Rename the default x,y inputs to match the requested input names
+                // GH python3 components have exactly 2 default inputs — we can only rename them, not add more
                 if (inputs != null && inputs.Count > 0)
                 {
                     try
@@ -2097,35 +2115,16 @@ case "list_gh_sliders":      return ListGhSliders();
                         var inputList = paramsObj?.GetType().GetProperty("Input", BindingFlags.Public | BindingFlags.Instance)?.GetValue(paramsObj) as IList;
                         if (inputList != null)
                         {
-                            // Rename existing default params first, then add extras
-                            for (int i = 0; i < inputs.Count; i++)
+                            for (int i = 0; i < Math.Min(inputs.Count, inputList.Count); i++)
                             {
                                 var inputName = inputs[i]?.ToString() ?? $"x{i}";
-                                if (i < inputList.Count)
-                                {
-                                    // Rename the existing param
-                                    var existing = inputList[i];
-                                    existing?.GetType().GetProperty("NickName", BindingFlags.Public | BindingFlags.Instance)?.SetValue(existing, inputName);
-                                    existing?.GetType().GetProperty("Name",     BindingFlags.Public | BindingFlags.Instance)?.SetValue(existing, inputName);
-                                }
-                                else
-                                {
-                                    // Try to add a new param via RegisterInputParam or DestroyVariableParameter+CreateVariableParameter
-                                    var registerMethod = ct.GetMethod("RegisterInputParam", BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic);
-                                    if (registerMethod == null) break;
-                                    // Create a GH_Param<GH_Number> as the new input
-                                    var numberParamType = ghAsm.GetType("Grasshopper.Kernel.Parameters.Param_Number");
-                                    if (numberParamType == null) break;
-                                    var newParam = Activator.CreateInstance(numberParamType);
-                                    if (newParam == null) break;
-                                    newParam.GetType().GetProperty("NickName", BindingFlags.Public | BindingFlags.Instance)?.SetValue(newParam, inputName);
-                                    newParam.GetType().GetProperty("Name",     BindingFlags.Public | BindingFlags.Instance)?.SetValue(newParam, inputName);
-                                    registerMethod.Invoke(comp, new[] { newParam });
-                                }
+                                var existing  = inputList[i];
+                                existing?.GetType().GetProperty("NickName", BindingFlags.Public | BindingFlags.Instance)?.SetValue(existing, inputName);
+                                existing?.GetType().GetProperty("Name",     BindingFlags.Public | BindingFlags.Instance)?.SetValue(existing, inputName);
                             }
                         }
                     }
-                    catch { /* best-effort — proceed even if param setup fails */ }
+                    catch { }
                 }
 
                 return comp;
