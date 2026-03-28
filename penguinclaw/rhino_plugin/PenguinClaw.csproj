@@ -20,4 +20,10 @@
   <ItemGroup>
     <EmbeddedResource Include="www\**\*" />
   </ItemGroup>
+
+  <Target Name="CopyDllToRhp" AfterTargets="Build">
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
+          DestinationFiles="$(OutputPath)$(AssemblyName).rhp"
+          OverwriteReadOnlyFiles="true" />
+  </Target>
 </Project>

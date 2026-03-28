@@ -1035,10 +1035,22 @@ case "list_gh_sliders":      return ListGhSliders();
                 {
                     if (p == null) continue;
                     var pt   = p.GetType();
+                    // Name/Category may be directly on proxy OR under Desc
                     var name = pt.GetProperty("Name", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p)?.ToString();
+                    var cat  = pt.GetProperty("Category", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p)?.ToString() ?? "";
+                    if (name == null)
+                    {
+                        var desc = pt.GetProperty("Desc", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p);
+                        if (desc != null)
+                        {
+                            var dt = desc.GetType();
+                            name = dt.GetProperty("Name",     BindingFlags.Public | BindingFlags.Instance)?.GetValue(desc)?.ToString();
+                            if (string.IsNullOrEmpty(cat))
+                                cat = dt.GetProperty("Category", BindingFlags.Public | BindingFlags.Instance)?.GetValue(desc)?.ToString() ?? "";
+                        }
+                    }
                     if (name == null || name.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) < 0) continue;
                     var guid = pt.GetProperty("Guid", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p)?.ToString() ?? "";
-                    var cat  = pt.GetProperty("Category", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p)?.ToString() ?? "";
                     results.Add(new JObject { ["name"] = name, ["guid"] = guid, ["category"] = cat });
                 }
                 return Obj("keyword", keyword, "count", results.Count, "matches", results);
@@ -2023,7 +2035,15 @@ case "list_gh_sliders":      return ListGhSliders();
                 int startsLen = int.MaxValue, containsLen = int.MaxValue;
                 foreach (var p in proxies)
                 {
-                    var n = p?.GetType().GetProperty("Name", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p)?.ToString();
+                    if (p == null) continue;
+                    var pt = p.GetType();
+                    // Name may be directly on the proxy OR nested under Desc (IGH_InstanceDescription)
+                    var n = pt.GetProperty("Name", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p)?.ToString();
+                    if (n == null)
+                    {
+                        var desc = pt.GetProperty("Desc", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p);
+                        n = desc?.GetType().GetProperty("Name", BindingFlags.Public | BindingFlags.Instance)?.GetValue(desc)?.ToString();
+                    }
                     if (n == null) continue;
                     if (string.Equals(n, componentName, StringComparison.OrdinalIgnoreCase)) { exactProxy = p; break; }
                     if (startsProxy == null && n.StartsWith(componentName, StringComparison.OrdinalIgnoreCase) && n.Length < startsLen)

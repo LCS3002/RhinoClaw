@@ -515,6 +515,7 @@ export default function PenguinClaw() {
         <span style={{ fontSize: "13px", fontWeight: 700, color: C.white, letterSpacing: "0.1em", fontFamily: "'Space Grotesk',sans-serif" }}>
           PENGUIN<span style={{ color: C.orange }}>CLAW</span>
         </span>
+        <span style={{ fontSize: "9px", color: "rgba(249,115,22,0.5)", marginLeft: "2px" }}>v3</span>
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "5px" }}>
           <div title="Server"   style={dot(health.fetch_ok, false)} />
