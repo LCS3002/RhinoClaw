@@ -1721,7 +1721,45 @@ case "list_gh_sliders":      return ListGhSliders();
 
                 var compMap = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
                 var created = new JArray();
-                int xPos = 100;
+
+                // ── Compute topological layout (depth columns, vertical stacking) ─
+                var allIds = components.OfType<JObject>()
+                    .Select(d => d["id"]?.ToString()).Where(id => id != null).ToList();
+                var adjFwd  = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                var inDeg   = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var nid in allIds) { adjFwd[nid] = new List<string>(); inDeg[nid] = 0; }
+                foreach (var wire in wires ?? new JArray())
+                {
+                    var fId = wire["from"]?.ToString()?.Split(':')[0];
+                    var tId = wire["to"]?.ToString()?.Split(':')[0];
+                    if (fId != null && tId != null && adjFwd.ContainsKey(fId) && inDeg.ContainsKey(tId))
+                    { adjFwd[fId].Add(tId); inDeg[tId]++; }
+                }
+                // Kahn's topo sort → longest-path depth
+                var topoDepth = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var nid in allIds) topoDepth[nid] = 0;
+                var tempDeg = new Dictionary<string, int>(inDeg, StringComparer.OrdinalIgnoreCase);
+                var bfsQ = new Queue<string>();
+                foreach (var nid in allIds) if (tempDeg[nid] == 0) bfsQ.Enqueue(nid);
+                while (bfsQ.Count > 0)
+                {
+                    var cur = bfsQ.Dequeue();
+                    foreach (var nxt in adjFwd[cur])
+                    {
+                        topoDepth[nxt] = Math.Max(topoDepth[nxt], topoDepth[cur] + 1);
+                        if (--tempDeg[nxt] == 0) bfsQ.Enqueue(nxt);
+                    }
+                }
+                // Assign canvas positions: 280px column width, 150px row height
+                var colRank = new Dictionary<int, int>();
+                var positions = new Dictionary<string, System.Drawing.PointF>(StringComparer.OrdinalIgnoreCase);
+                foreach (var nid in allIds.OrderBy(nid => topoDepth[nid]).ThenBy(nid => allIds.IndexOf(nid)))
+                {
+                    var d = topoDepth[nid];
+                    if (!colRank.ContainsKey(d)) colRank[d] = 0;
+                    var rank = colRank[d]++;
+                    positions[nid] = new System.Drawing.PointF(120 + d * 280, 80 + rank * 150);
+                }
 
                 // ── Create components ────────────────────────────────────────────
                 foreach (var def in components)
@@ -1776,9 +1814,11 @@ case "list_gh_sliders":      return ListGhSliders();
                     // Set NickName
                     try { comp.GetType().GetProperty("NickName", BindingFlags.Public | BindingFlags.Instance)?.SetValue(comp, dispName); } catch { }
 
-                    // Position on canvas
-                    GhSetPivot(comp, xPos, 200);
-                    xPos += 230;
+                    // Position on canvas using precomputed topological layout
+                    if (id != null && positions.ContainsKey(id))
+                        GhSetPivot(comp, (int)positions[id].X, (int)positions[id].Y);
+                    else
+                        GhSetPivot(comp, 120, 80);
 
                     // Add to GH document — try every known AddObject signature
                     var addMethods = ghDoc.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)

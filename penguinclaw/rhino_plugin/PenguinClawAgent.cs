@@ -84,22 +84,42 @@ namespace PenguinClaw
             "- list_gh_sliders() / set_gh_slider(name, value) / list_gh_components()\n" +
             "- build_gh_definition(components[], wires[], solve, clear_canvas) — build a GH definition from scratch.\n" +
             "  WIRE FORMAT (critical): wires is an array of objects: [{\"from\":\"id:outputIndex\",\"to\":\"id:inputIndex\"}] — 0-based indices.\n" +
-            "  COMPONENT TYPES:\n" +
+            "  COMPONENT TYPES — use 'component' (native) by default, python3 only as absolute last resort:\n" +
+            "    'component' — built-in GH component by component_name. ALWAYS prefer this. Reliable native components:\n" +
+            "      Geometry:  'Sphere', 'Box', 'Circle', 'Rectangle', 'Cylinder', 'Cone', 'Line', 'Arc', 'Polyline', 'Curve'\n" +
+            "      Transform: 'Move', 'Scale', 'Rotate', 'Mirror'\n" +
+            "      Ops:       'Extrude', 'Loft', 'Pipe', 'Offset Curve', 'Cap Holes', 'Join Curves', 'Boundary Surface'\n" +
+            "      Boolean:   'Boolean Union', 'Boolean Difference', 'Boolean Intersection'\n" +
+            "      Math:      'Addition', 'Subtraction', 'Multiplication', 'Division', 'Mass Addition'\n" +
+            "      Analyse:   'Area', 'Volume', 'Deconstruct Brep', 'Brep Edges'\n" +
+            "      Params:    'Construct Point', 'Deconstruct', 'Vector XYZ', 'Unit X', 'Unit Y', 'Unit Z', 'Number to Text'\n" +
+            "      Data:      'List Item', 'Series', 'Range', 'Count', 'Divide Curve', 'Evaluate Curve', 'Interpolate'\n" +
             "    'slider' — number slider. Fields: value, min, max.\n" +
             "    'panel'  — text panel. Field: text.\n" +
-            "    'python3'— Python 3 script component. Fields: code (string), inputs (string[]), outputs (string[]). NOTE: python3 components have exactly 2 wireable inputs — keep inputs array to max 2 items. Merge all parameters into at most 2 inputs, or hardcode extras in the script.\n" +
-            "    'component' — built-in GH component by component_name (fuzzy matched). Reliable: 'Addition', 'Multiplication', 'Area', 'Volume', 'Loft', 'Extrude', 'Offset Curve', 'Sphere', 'Box', 'Circle', 'Cylinder', 'Plane', 'Point', 'Move', 'Scale'. Try these before python3.\n" +
-            "    'sdk' — component by GUID. Field: guid.\n" +
-            "  STRATEGY: (1) Try native component types first ('Sphere', 'Cylinder', 'Box', 'Move', 'Point') — wire sliders to their inputs. (2) If python3 is needed, call search_gh_components('Python') first to get exact name/GUID. (3) If python3 fails, fall back: create sliders only in GH, then use execute_python_code to read list_gh_sliders() values and build geometry in Rhino.\n" +
-            "  IN-GH python3 code must use Rhino.Geometry (not rhinoscriptsyntax) and assign to output vars:\n" +
-            "    code: \"import Rhino.Geometry as rg\\ngeo = rg.Sphere(rg.Point3d(0,0,radius), radius).ToBrep()\"\n" +
-            "  EXAMPLE — sphere with native GH component:\n" +
-            "    components: [{\"id\":\"r\",\"type\":\"slider\",\"name\":\"Radius\",\"value\":5,\"min\":1,\"max\":20}, {\"id\":\"sph\",\"type\":\"component\",\"component_name\":\"Sphere\"}]\n" +
-            "    wires: [{\"from\":\"r\",\"to\":\"sph:1\"}]  (Sphere inputs: 0=Base plane, 1=Radius)\n" +
-            "- search_gh_components(keyword) — search GH server by name (e.g. 'python', 'sphere'). Returns exact names + GUIDs. Call this FIRST if unsure of component_name.\n" +
+            "    'toggle' — boolean toggle. Field: checked.\n" +
+            "    'sdk'    — component by GUID (use after search_gh_components). Field: guid.\n" +
+            "    'python3'— ABSOLUTE LAST RESORT. Only if zero native components can do the job. Fields: code (string), inputs (string[], max 2), outputs (string[]).\n" +
+            "  KNOWN INPUT INDICES (0-based):\n" +
+            "    Sphere:   0=Base plane, 1=Radius\n" +
+            "    Box:      0=Base plane, 1=X, 2=Y, 3=Z\n" +
+            "    Cylinder: 0=Base plane, 1=Radius, 2=Height\n" +
+            "    Circle:   0=Plane, 1=Radius\n" +
+            "    Move:     0=Geometry, 1=Motion (vector)\n" +
+            "    Extrude:  0=Base, 1=Direction\n" +
+            "    Loft:     0=Curves\n" +
+            "    Pipe:     0=Curve, 1=Radius\n" +
+            "    Scale:    0=Geometry, 1=Center, 2=Factor\n" +
+            "    Vector XYZ: 0=X, 1=Y, 2=Z\n" +
+            "    If unsure: call search_gh_components(keyword) to get exact name + GUIDs.\n" +
+            "  EXAMPLE — sphere:\n" +
+            "    components:[{\"id\":\"r\",\"type\":\"slider\",\"name\":\"Radius\",\"value\":5,\"min\":1,\"max\":20},{\"id\":\"sph\",\"type\":\"component\",\"component_name\":\"Sphere\"}]\n" +
+            "    wires:[{\"from\":\"r\",\"to\":\"sph:1\"}]\n" +
+            "  EXAMPLE — box (width × depth × height):\n" +
+            "    components:[{\"id\":\"w\",\"type\":\"slider\",\"name\":\"Width\",\"value\":4,\"min\":1,\"max\":20},{\"id\":\"d\",\"type\":\"slider\",\"name\":\"Depth\",\"value\":4,\"min\":1,\"max\":20},{\"id\":\"h\",\"type\":\"slider\",\"name\":\"Height\",\"value\":6,\"min\":1,\"max\":20},{\"id\":\"box\",\"type\":\"component\",\"component_name\":\"Box\"}]\n" +
+            "    wires:[{\"from\":\"w\",\"to\":\"box:1\"},{\"from\":\"d\",\"to\":\"box:2\"},{\"from\":\"h\",\"to\":\"box:3\"}]\n" +
+            "- search_gh_components(keyword) — search GH server by name. Use before build if unsure of exact component_name.\n" +
             "- solve_gh_definition() — trigger recompute on active canvas\n" +
-            "- bake_gh_definition(layer_name) — bake all geometry to a named Rhino layer\n" +
-            "IMPORTANT: after successfully building a GH definition that produces geometry, ALWAYS call bake_gh_definition immediately so the user can see the result in the Rhino viewport.\n\n" +
+            "- bake_gh_definition(layer_name) — bake geometry to a named Rhino layer. Only call this when the user explicitly asks to bake or bring geometry into Rhino.\n\n" +
 
             "## Spatial placement — always measure, never guess\n" +
             "- Before placing any object relative to another, call get_scene_layout() to see all objects with bounding boxes.\n" +
