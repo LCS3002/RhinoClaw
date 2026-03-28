@@ -358,9 +358,13 @@ export default function PenguinClaw() {
   const [abortCtrl, setAbortCtrl]   = useState(null);
   const [visionActive, setVisionActive] = useState(false);
   const [turnStats, setTurnStats]   = useState({ turn: 0, inputTokens: 0, outputTokens: 0 });
+  const [logEntries, setLogEntries] = useState([]);
+  const [logSeq, setLogSeq]         = useState(-1);
   const chatEndRef = useRef(null);
+  const logEndRef  = useRef(null);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isTyping]);
+  useEffect(() => { if (tab === "log") logEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logEntries, tab]);
   useEffect(() => { try { localStorage.setItem("pc_messages", JSON.stringify(messages)); } catch {} }, [messages]);
   useEffect(() => { try { localStorage.setItem("pc_history",  JSON.stringify(history));  } catch {} }, [history]);
 
@@ -400,6 +404,29 @@ export default function PenguinClaw() {
     };
     poll();
     const t = setInterval(poll, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    let currentSeq = -1;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/log?after=${currentSeq}&limit=200`);
+        const d = await r.json();
+        if (!alive) return;
+        if (d.entries && d.entries.length > 0) {
+          setLogEntries(prev => {
+            const combined = [...prev, ...d.entries];
+            return combined.slice(-500); // keep last 500
+          });
+          currentSeq = d.seq;
+          setLogSeq(d.seq);
+        }
+      } catch {}
+    };
+    poll();
+    const t = setInterval(poll, 1500);
     return () => { alive = false; clearInterval(t); };
   }, []);
 
@@ -504,6 +531,7 @@ export default function PenguinClaw() {
         {[
           ["chat",     `💬 Chat`],
           ["tools",    `🔧 Tools (${health.tools_loaded})`],
+          ["log",      `🪵 Log`],
           ["settings", `⚙ Settings`],
         ].map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={{
@@ -610,6 +638,39 @@ export default function PenguinClaw() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Log tab */}
+          {tab === "log" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "8px", fontFamily: "monospace", fontSize: "10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", padding: "0 2px" }}>
+                <span style={{ color: C.gray500, letterSpacing: "0.1em", textTransform: "uppercase" }}>Debug Log</span>
+                <button onClick={() => setLogEntries([])} style={{ background: "none", border: `1px solid ${C.gray300}`, borderRadius: "4px", padding: "2px 8px", cursor: "pointer", color: C.gray500, fontSize: "9px" }}>Clear</button>
+              </div>
+              {logEntries.length === 0 && (
+                <div style={{ color: C.gray300, textAlign: "center", marginTop: "40px" }}>No events yet — send a message to start logging.</div>
+              )}
+              {logEntries.map((e, i) => {
+                const typeColors = { user: C.orange, agent: C.green, tool: C.purple, event: C.gray500 };
+                const col = typeColors[e.type] || C.gray500;
+                const hasDetail = e.detail && e.detail.length > 0;
+                return (
+                  <div key={e.seq ?? i} style={{ marginBottom: "2px", borderLeft: `2px solid ${col}`, paddingLeft: "6px", paddingTop: "2px", paddingBottom: "2px" }}>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "baseline" }}>
+                      <span style={{ color: C.gray300, flexShrink: 0 }}>{e.ts}</span>
+                      <span style={{ color: col, fontWeight: 700, flexShrink: 0 }}>{e.label}</span>
+                      <span style={{ color: C.gray700, wordBreak: "break-all" }}>{e.body}</span>
+                    </div>
+                    {hasDetail && (
+                      <div style={{ color: C.gray500, paddingLeft: "4px", marginTop: "1px", wordBreak: "break-all", whiteSpace: "pre-wrap", fontSize: "9px", maxHeight: "80px", overflow: "auto" }}>
+                        → {e.detail}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div ref={logEndRef} />
             </div>
           )}
 

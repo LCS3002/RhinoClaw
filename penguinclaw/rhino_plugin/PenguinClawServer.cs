@@ -96,6 +96,7 @@ namespace PenguinClaw
                     case "/chat":             RouteChat(req, resp); break;
                     case "/stop":             RouteStop(resp); break;
                     case "/viewport":         RouteViewport(resp); break;
+                    case "/log":              RouteLog(req, resp); break;
                     case "/rebuild-registry": RouteRebuildRegistry(resp); break;
                     case "/settings":         RouteSettings(req, resp); break;
                     default:                  ServeStatic(req, resp); break;
@@ -195,6 +196,8 @@ namespace PenguinClaw
                 return;
             }
 
+            PenguinClawDebugLog.LogUser(message);
+
             var history = (data["history"] as JArray) ?? new JArray();
             var doc     = RhinoDoc.ActiveDoc;
 
@@ -234,6 +237,28 @@ namespace PenguinClaw
                 ["input_tokens"]  = result.InputTokens,
                 ["output_tokens"] = result.OutputTokens,
                 ["cached_tokens"] = result.CachedTokens,
+            });
+        }
+
+        private static void RouteLog(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            var query  = req.Url.Query ?? "";
+            int after  = -1;
+            int limit  = 300;
+            foreach (var part in query.TrimStart('?').Split('&'))
+            {
+                var kv = part.Split('=');
+                if (kv.Length == 2)
+                {
+                    if (kv[0] == "after") int.TryParse(kv[1], out after);
+                    if (kv[0] == "limit") int.TryParse(kv[1], out limit);
+                }
+            }
+            var entries = PenguinClawDebugLog.GetEntries(limit, after);
+            WriteJson(resp, new JObject
+            {
+                ["seq"]     = PenguinClawDebugLog.LatestSeq(),
+                ["entries"] = entries,
             });
         }
 

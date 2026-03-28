@@ -304,11 +304,11 @@ namespace PenguinClaw
                     return new AgentResult { Response = llmResp.ErrorMessage, ToolCalls = toolCallsMade };
 
                 if (llmResp.StopReason == "end_turn")
-                    return new AgentResult
-                    {
-                        Response  = string.IsNullOrEmpty(llmResp.Text) ? "(No response)" : llmResp.Text,
-                        ToolCalls = toolCallsMade,
-                    };
+                {
+                    var finalText = string.IsNullOrEmpty(llmResp.Text) ? "(No response)" : llmResp.Text;
+                    PenguinClawDebugLog.LogAgent(finalText);
+                    return new AgentResult { Response = finalText, ToolCalls = toolCallsMade };
+                }
 
                 if (llmResp.StopReason == "tool_use")
                 {
@@ -389,6 +389,7 @@ namespace PenguinClaw
                                 : PenguinClawTools.Execute(tc.Name, tc.Input, doc);
                             RecordToolResult(tc.Name, resultStr);
                             PenguinClawActionLog.Record(tc.Name, tc.Input, resultStr);
+                            PenguinClawDebugLog.LogTool(tc.Name, tc.Input, resultStr);
 
                             // Check for vision injection signal
                             if (tc.Name == "capture_and_assess")
