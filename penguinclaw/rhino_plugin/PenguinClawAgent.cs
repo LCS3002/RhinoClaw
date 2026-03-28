@@ -93,6 +93,7 @@ namespace PenguinClaw
             "  EXAMPLE — parametric sphere with python3:\n" +
             "    components: [{\"id\":\"r\",\"type\":\"slider\",\"name\":\"Radius\",\"value\":5,\"min\":1,\"max\":20}, {\"id\":\"py\",\"type\":\"python3\",\"name\":\"Sphere\",\"inputs\":[\"radius\"],\"outputs\":[\"geo\"],\"code\":\"import rhinoscriptsyntax as rs\\ngeo = rs.AddSphere((0,0,0), radius)\"}]\n" +
             "    wires: [{\"from\":\"r:0\",\"to\":\"py:0\"}]\n" +
+            "- search_gh_components(keyword) — search GH server by name (e.g. 'python', 'sphere'). Returns exact names + GUIDs. Call this FIRST if unsure of component_name.\n" +
             "- solve_gh_definition() — trigger recompute on active canvas\n" +
             "- bake_gh_definition(layer_name) — bake all geometry to a named Rhino layer\n\n" +
 

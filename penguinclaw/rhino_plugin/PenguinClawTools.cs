@@ -131,6 +131,20 @@ namespace PenguinClaw
                 },
                 new JObject
                 {
+                    ["name"]        = "search_gh_components",
+                    ["description"] = "Searches the Grasshopper component server for components matching a keyword. Returns name and GUID. Use this to find the exact component_name or GUID before calling build_gh_definition.",
+                    ["input_schema"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["keyword"] = new JObject { ["type"] = "string", ["description"] = "Search term (case-insensitive, partial match). E.g. 'python', 'sphere', 'script'." },
+                        },
+                        ["required"] = new JArray { "keyword" },
+                    },
+                },
+                new JObject
+                {
                     ["name"]        = "set_gh_slider",
                     ["description"] = "Sets the value of a Grasshopper number slider by NickName and triggers a new solution.",
                     ["input_schema"] = new JObject
@@ -647,6 +661,7 @@ namespace PenguinClaw
                 case "list_layers":          return ListLayers();
 case "list_gh_sliders":      return ListGhSliders();
                 case "list_gh_components":   return ListGhComponents();
+                case "search_gh_components": return SearchGhComponents(S(input, "keyword"));
                 case "set_gh_slider":        return SetGhSlider(S(input, "name"), D(input, "value"));
                 case "capture_viewport":     return CaptureViewport();
                 case "run_rhino_command":    return RunRhinoCommand(S(input, "command"), input["echo"]?.ToObject<bool>() ?? true);
@@ -999,6 +1014,34 @@ case "list_gh_sliders":      return ListGhSliders();
                     });
                 }
                 return Obj("count", comps.Count, "components", comps);
+            });
+        }
+
+        private static string SearchGhComponents(string keyword)
+        {
+            if (string.IsNullOrWhiteSpace(keyword)) return Fail("keyword is required.");
+            return OnMain(() =>
+            {
+                var ghAsm     = Assembly.Load("Grasshopper");
+                var instances = ghAsm?.GetType("Grasshopper.Instances");
+                var server    = instances?.GetProperty("ComponentServer", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                var proxies   = server?.GetType()
+                    .GetProperty("ObjectProxies", BindingFlags.Public | BindingFlags.Instance)
+                    ?.GetValue(server) as IEnumerable;
+                if (proxies == null) return new JObject { ["success"] = false, ["message"] = "Could not access GH component server." };
+
+                var results = new JArray();
+                foreach (var p in proxies)
+                {
+                    if (p == null) continue;
+                    var pt   = p.GetType();
+                    var name = pt.GetProperty("Name", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p)?.ToString();
+                    if (name == null || name.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    var guid = pt.GetProperty("Guid", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p)?.ToString() ?? "";
+                    var cat  = pt.GetProperty("Category", BindingFlags.Public | BindingFlags.Instance)?.GetValue(p)?.ToString() ?? "";
+                    results.Add(new JObject { ["name"] = name, ["guid"] = guid, ["category"] = cat });
+                }
+                return Obj("keyword", keyword, "count", results.Count, "matches", results);
             });
         }
 
@@ -1711,8 +1754,10 @@ case "list_gh_sliders":      return ListGhSliders();
 
                     if (comp == null)
                     {
-                        created.Add(new JObject { ["id"] = id, ["status"] = "failed",
-                            ["reason"] = $"Could not create {type} '{def["component_name"] ?? def["name"]}'" });
+                        var tried = type == "python3" ? "python3 (tried: Python 3 Script, Python3 Script, Python Script, GH_ScriptComponent)"
+                                  : type == "component" ? $"component '{def["component_name"] ?? def["name"]}' (not found in GH server — use search_gh_components to find exact name or GUID)"
+                                  : $"{type} '{def["component_name"] ?? def["name"]}'";
+                        created.Add(new JObject { ["id"] = id, ["status"] = "failed", ["reason"] = $"Could not create {tried}" });
                         continue;
                     }
 
