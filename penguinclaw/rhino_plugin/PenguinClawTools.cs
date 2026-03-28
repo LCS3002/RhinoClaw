@@ -1780,10 +1780,31 @@ case "list_gh_sliders":      return ListGhSliders();
                     GhSetPivot(comp, xPos, 200);
                     xPos += 230;
 
-                    // Add to GH document
-                    var addMethod = ghDoc.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                        .FirstOrDefault(m => m.Name == "AddObject" && m.GetParameters().Length == 2);
-                    addMethod?.Invoke(ghDoc, new[] { comp, (object)false });
+                    // Add to GH document — try every known AddObject signature
+                    var addMethods = ghDoc.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                        .Where(m => m.Name == "AddObject").ToList();
+                    var added = false;
+                    foreach (var m in addMethods.OrderBy(m => m.GetParameters().Length))
+                    {
+                        try
+                        {
+                            var parms = m.GetParameters();
+                            if (parms.Length == 1) { m.Invoke(ghDoc, new[] { comp }); added = true; break; }
+                            if (parms.Length == 2) { m.Invoke(ghDoc, new[] { comp, (object)false }); added = true; break; }
+                            if (parms.Length == 3) { m.Invoke(ghDoc, new[] { comp, (object)false, (object)true }); added = true; break; }
+                        }
+                        catch { }
+                    }
+                    if (!added)
+                    {
+                        // Last resort: try the Objects collection Add method
+                        try
+                        {
+                            var objs = ghDoc.GetType().GetProperty("Objects", BindingFlags.Public | BindingFlags.Instance)?.GetValue(ghDoc);
+                            objs?.GetType().GetMethod("Add", new[] { comp.GetType() })?.Invoke(objs, new[] { comp });
+                        }
+                        catch { }
+                    }
 
                     if (id != null) compMap[id] = comp;
                     created.Add(new JObject { ["id"] = id, ["type"] = type, ["name"] = dispName, ["status"] = "created" });
