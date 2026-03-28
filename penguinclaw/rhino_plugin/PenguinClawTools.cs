@@ -1048,12 +1048,21 @@ case "list_gh_sliders":      return ListGhSliders();
 
                 var folder = Path.Combine(Path.GetTempPath(), "penguinclaw");
                 Directory.CreateDirectory(folder);
-                var path    = Path.Combine(folder, "viewport.png");
+                var path     = Path.Combine(folder, "viewport.png");
                 var viewRect = view.ClientRectangle;
-                var size    = (viewRect.Width > 0 && viewRect.Height > 0)
-                    ? new System.Drawing.Size(viewRect.Width, viewRect.Height)
-                    : new System.Drawing.Size(1024, 768);
-                var bitmap = view.CaptureToBitmap(size);
+
+                // Cap capture resolution to 1280 px on the longest side to limit PNG size
+                const int MaxCaptureDim = 1280;
+                int capW = viewRect.Width  > 0 ? viewRect.Width  : 1024;
+                int capH = viewRect.Height > 0 ? viewRect.Height : 768;
+                if (capW > MaxCaptureDim || capH > MaxCaptureDim)
+                {
+                    double s = Math.Min((double)MaxCaptureDim / capW, (double)MaxCaptureDim / capH);
+                    capW = (int)(capW * s);
+                    capH = (int)(capH * s);
+                }
+
+                var bitmap = view.CaptureToBitmap(new System.Drawing.Size(capW, capH));
                 if (bitmap == null) return new JObject { ["success"] = false, ["message"] = "CaptureToBitmap returned null." };
 
                 bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
@@ -1782,8 +1791,37 @@ case "list_gh_sliders":      return ListGhSliders();
                 return Fail("Viewport capture file not found.");
 
             byte[] bytes;
-            try { bytes = File.ReadAllBytes(path); }
-            catch (Exception ex) { return Fail($"Failed to read viewport file: {ex.Message}"); }
+            try
+            {
+                // Scale to max 1024 px longest side and re-encode as JPEG (quality 85)
+                // to keep the base64 payload well under the 200k-token API limit.
+                const int MaxDim = 1024;
+                using (var original = System.Drawing.Image.FromFile(path))
+                {
+                    int w = original.Width, h = original.Height;
+                    if (w > MaxDim || h > MaxDim)
+                    {
+                        double s = Math.Min((double)MaxDim / w, (double)MaxDim / h);
+                        w = (int)(w * s);
+                        h = (int)(h * s);
+                    }
+                    using (var scaled = new System.Drawing.Bitmap(original, w, h))
+                    using (var ms = new System.IO.MemoryStream())
+                    {
+                        var jpegCodec = System.Drawing.Imaging.ImageCodecInfo.GetImageEncoders()
+                            .FirstOrDefault(c => c.FormatID == System.Drawing.Imaging.ImageFormat.Jpeg.Guid);
+                        var encParams = new System.Drawing.Imaging.EncoderParameters(1);
+                        encParams.Param[0] = new System.Drawing.Imaging.EncoderParameter(
+                            System.Drawing.Imaging.Encoder.Quality, 85L);
+                        if (jpegCodec != null)
+                            scaled.Save(ms, jpegCodec, encParams);
+                        else
+                            scaled.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg);
+                        bytes = ms.ToArray();
+                    }
+                }
+            }
+            catch (Exception ex) { return Fail($"Failed to process viewport image: {ex.Message}"); }
 
             var base64 = Convert.ToBase64String(bytes);
             return new JObject
@@ -1791,7 +1829,7 @@ case "list_gh_sliders":      return ListGhSliders();
                 ["success"]      = true,
                 ["path"]         = path,
                 ["base64"]       = base64,
-                ["media_type"]   = "image/png",
+                ["media_type"]   = "image/jpeg",
                 ["prompt"]       = prompt ?? "Describe what you see in the 3D viewport.",
                 ["vision_ready"] = true,
             }.ToString(Formatting.None);
